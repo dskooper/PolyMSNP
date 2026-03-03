@@ -1,21 +1,52 @@
 # WebMSNP
-WebMSNP is a web-based client for the MSNP instant messaging protocol targeting at least iOS 6 WebKit!
+WebMSNP is a lightweight web-based client for the MSNP instant messaging protocol!
 
 This repository contains the Rust-based source code for the server.
 
-## Thanks
-- [campos02](https://github.com/campos02) for creating the [MSNP11 SDK](https://github.com/campos02/msnp11-sdk) which this project uses
-
 ## Servers
 As of right now, there is **1** website hosting this server:
-- https://webmsnp.kooper.online
-  - Hosted from my own machine; not 24/7 at the moment
+- https://webmsnp.kooper.online (hosted by me on my own machine, expect sudden downtimes as I will be using this to test out bugfixes or new features)
+
+## Compatibility
+This client is not just designed for mobile devices in mind, but specifically (at least) the WebKit version provided in iOS 6.
+
+Any browser from then on should run WebMSNP fine.[^1]
+
+## Features (besides core functionality)
+- Specify your own MSNP11-compatible server on login
+- Send and receive nudges
+- Make additions to your contact list
+- View contact's status (online, offline, away, etc.) and change your own
+- View contact's personal message
+- Change your own personal message
+
+## Todo (in descending order of priority
+- [ ] Replace web app icon with something original (https://github.com/dskooper/webmsnp/issues/1)
+- [ ] See your username and personal message
+- [ ] Change your username and personal message
+- [ ] Allow users to *remove* contacts
+- [ ] View profile pictures
+- [ ] Dark mode?
+
+### List of "wontfix" features
+- Winks:
+  - Requires Adobe Flash which was never available on iOS[^2] and dropped from Android after Ice Cream Sandwich. <br>
+- File transfers:
+  - Personally out of scope, WebMSNP is not supposed to be a feature-complete client (and also idk how to implement). <br>
+    If you want to transfer files use something like [Litterbox](https://litterbox.catbox.moe)
+- Voice/video calling:
+  - Very out of scope considering it probably wouldn't work on mobile devices (assuming I knew how to implement that in the first place)
+- MSN emoticons:
+  - This would likely get me in legal trouble with Microsoft. All mobile devices basically come with emoji pickers anyway so just use those
+- Custom emoticons:
+  - Not implemented by the MSNP11 SDK yet, either way MSN emoticons won't be added so why this?
 
 ## Building
 ### Prerequisites
-- The Rust programming language, download from [here](https://rust-lang.org/tools/install/).
+- The Rust programming language, downloadable from [here](https://rust-lang.org/tools/install/).
+  - By association, any operating system that is still supported by Rust.
 
-Once done, you can do the following:
+Once installed, you can do the following:
 - Linux:
   ```
   git clone https://github.com/dskooper/webmsnp
@@ -27,15 +58,20 @@ Once done, you can do the following:
   2. Extract the repository into a folder and enter it.
   3. Right click on `build-release.ps1` and press on "Run with PowerShell`
 
-
 If successful, there should now be a `build-rel` folder containing an executable.
 
 ## Usage
-Once compiled, you can launch the server executable to immediately start hosting on 0.0.0.0 port 27677.
+Once compiled, you can launch the server executable to immediately start hosting on 0.0.0.0 port 27677[^3]. <br>
 
-Make sure that port 27677 is not being blocked by your firewall or being used by another process.
+## Credits/Thanks
+- [campos02](https://github.com/campos02) for creating the [MSNP11 SDK](https://github.com/campos02/msnp11-sdk) which this project uses
+- [CrossTalk](https://crosstalk.im) for providing a compatible MSNP server that I used to test
 
 ## License
 <img width="136" height="68" alt="gplv3-with-text-136x68" src="https://github.com/user-attachments/assets/9f55f108-02c2-46db-bf0f-84949be260ae" />
 
 This project is open-source and provided under the GNU GPL v3 license: you can view the license contents [here](https://www.gnu.org/licenses/gpl-3.0.txt)
+
+[^1]: Internet Explorer 9 has been confirmed to have CSS compatibility issues - tread carefully!
+[^2]: Outside of apps such as Puffin Browser, which are no longer in development.
+[^3]: Make sure that this port is not blocked by your firewall or in use by another process.
