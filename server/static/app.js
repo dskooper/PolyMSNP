@@ -203,7 +203,8 @@
         });
         console.log('[CLIENT_LOGIN] Login message sent to server');
     }
-    
+
+    // This function is absolute hot shit
     function handleRedirect(server, port) {
         console.log('[CLIENT_REDIRECT] Redirect received to', server, ':', port);
         showStatus('Redirecting to ' + server + ':' + port + '...');
@@ -234,8 +235,8 @@
                     config_server: configServer || null
                 });
                 console.log('[CLIENT_REDIRECT] Redirect login message sent');
-            }, 500);
-        }, 500);
+            }, 3000);
+        }, 3000);
     }
     
     function handleAuthenticated() {
