@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="iMSNP">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <title>iMSNP</title>
-    <link rel="stylesheet" href="saurik.css?v=20260418-28">
+    <link rel="stylesheet" href="saurik.css?v=8779042159">
     
 </head>
 <body class="pinstripe">
@@ -98,7 +98,7 @@
                 <div class="collapsible-section">
                     <button class="collapsible-toggle" id="togglePsm">Personal Message ▼</button>
                     <div class="collapsible-content" id="psmSection" style="display:none;">
-                        <input type="text" id="personalMessageInput" placeholder="Set personal message..." maxlength="129">
+                        <input type="text" id="personalMessageInput" placeholder="Set personal message..." maxlength="48">
                         <button id="setPsmBtn" class="btn-small">Set</button>
                     </div>
                 </div>
@@ -128,12 +128,12 @@
         <panel class="screen-panel content chat-layout">
             <div id="messageContainer" class="message-container"></div>
             <div class="message-input-container">
-                <input type="text" id="messageInput" placeholder="Type a message and press Done/Enter..." maxlength="512">
+                <input type="text" id="messageInput" placeholder="Text Message" maxlength="512">
             </div>
         </panel>
     </div>
 
-    <script src="/app.js?v=20260418-6"></script>
+    <script src="/app.js?v=8779042159"></script>
     <script>
         var userAgent = window.navigator && window.navigator.userAgent ? window.navigator.userAgent : '';
         if ( /(iPhone|iPad|iPod)/.test(userAgent) && /OS [1-5]_/.test(userAgent) && /Safari/.test(userAgent) ) {
