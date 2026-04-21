@@ -5,7 +5,8 @@ This repository contains the Rust-based source code for the server.
 
 ## Servers
 > [!NOTE]
-> If you are hosting your own instance of iMSNP, please let me know
+> If you are hosting your own instance of iMSNP, please let me know!
+
 As of right now, there is **1** website hosting this server:
 - https://imsnp.kooper.online (not 24/7, only for testing)
 
