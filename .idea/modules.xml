@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/webmsnp.iml" filepath="$PROJECT_DIR$/.idea/webmsnp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/polymsnp.iml" filepath="$PROJECT_DIR$/.idea/polymsnp.iml" />
     </modules>
   </component>
 </project>
