@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="iMSNP">
+    <meta name="apple-mobile-web-app-title" content="PolyMSNP">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <title>iMSNP</title>
+    <title>PolyMSNP for iOS</title>
     <link rel="stylesheet" href="saurik.css?v=20260418-28">
     
 </head>
@@ -15,7 +15,7 @@
     <!-- Login Screen -->
     <div id="loginScreen" class="screen">
         <div class="navbar">
-            iMSNP
+            PolyMSNP
             <div class="nav-right">
                 <button id="reloadBtn" class="btn-secondary">Reload</button>
             </div>
@@ -68,7 +68,7 @@
                     <div id="loginError" class="error-message" style="display:none;"></div>
                     <div id="loginStatus" class="status-message" style="display:none;"></div>
                 </div>
-                <div class="login-caption">iMSNP connects you with your MSN Messenger contacts, on the web, on the go!</div>
+                <div class="login-caption">PolyMSNP lets you connect with MSN Messenger contacts on the web!</div>
             </form>
         </panel>
     </div>
@@ -147,7 +147,7 @@
         <panel class="screen-panel content chat-layout">
             <div id="messageContainer" class="message-container"></div>
             <div class="message-input-container">
-                <input type="text" id="messageInput" placeholder="Type a message and press Done/Enter..." maxlength="512">
+                <input type="text" id="messageInput" placeholder="Type a message..." maxlength="512">
             </div>
         </panel>
     </div>
@@ -156,7 +156,7 @@
     <script>
         var userAgent = window.navigator && window.navigator.userAgent ? window.navigator.userAgent : '';
         if ( /(iPhone|iPad|iPod)/.test(userAgent) && /OS [1-5]_/.test(userAgent) && /Safari/.test(userAgent) ) {
-            alert("iMSNP requires iOS 6 or later. Please update your device to use this application.");
+            alert("PolyMSNP does not support iOS 5 and earlier at the moment. Please bear with us...");
             document.getElementById('loginBtn').disabled = true;
             document.getElementById("loginBtn").textContent = "Unavailable";
             document.getElementById('loginError').textContent = "DeviceUnsupported: iOS 6 or later is required.";
@@ -167,7 +167,7 @@
                 document.getElementById('loginBtn').classList.remove('login-ready');
             });
         } else if ( /MSIE|Trident|Opera Mini/.test(userAgent) ) { // Detection for IE and Opera Mini since they are known to break the CSS.
-            alert("Unsupported browser detected, iMSNP was designed with iOS WebKit in mind. Proceed with caution.");
+            alert("PolyMSNP's support for very old desktop/mobile browsers is a work-in-progress. Stay tuned, and proceed at your own risk!");
         }
     </script>
 </body>
