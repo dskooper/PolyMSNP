@@ -68,7 +68,7 @@ Once installed, you can do the following:
 If successful, there should now be a `build-rel` folder containing an executable.
 
 ## Usage
-Once compiled, you can launch the server executable to immediately start hosting on 0.0.0.0 port 27677[^3].
+Once compiled, you can launch the server executable to immediately start hosting on 0.0.0.0 port 7659[^3].
 
 ### Adding new emoticon packs
 
