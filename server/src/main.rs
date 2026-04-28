@@ -1,4 +1,4 @@
-// backend for webmsnp
+// polymsnp main backend code
 // abandon all hope ye who enter here
 
 mod client_message;
@@ -66,12 +66,12 @@ async fn main() {
         .fallback_service(ServeDir::new("static"))
         .layer(TraceLayer::new_for_http());
 
-    // MSNP -> 6767 (T9)
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:27677")
+    // POLY -> 7659 (T9)
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:7659")
         .await
         .unwrap();
 
-    info!("Web server listening on 0.0.0.0, port 27677");
+    info!("Web server listening on 0.0.0.0, port 7659");
     axum::serve(listener, app).await.unwrap();
 }
 
