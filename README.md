@@ -14,6 +14,7 @@ This repository contains the Rust-based source code for the server.
 
 As of right now, there is **1** website hosting this server:
 - https://pmsnp.kooper.online (not 24/7, only for testing)
+  - If you get an error (e.g. 1033) when trying to access, 99% chance it is down!
 
 Even so, it is highly recommended to host PolyMSNP yourself!
 
