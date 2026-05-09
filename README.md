@@ -12,9 +12,10 @@ This repository contains the Rust-based source code for the server.
 > [!NOTE]
 > If you are hosting your own instance of PolyMSNP, please let me know!
 
-As of right now, there is **1** website hosting this server:
+As of right now, there are **2** websites hosting this server:
 - https://pmsnp.kooper.online (not 24/7, only for testing)
   - If you get an error (e.g. 1033) when trying to access, 99% chance it is down!
+- https://msn.rawrr.dev (24/7, updates weekly per cronjob)
 
 Even so, it is highly recommended to host PolyMSNP yourself!
 
