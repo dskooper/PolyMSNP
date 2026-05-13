@@ -55,6 +55,8 @@ pub enum ServerMessage {
     ParticipantLeft { email: String },
     #[serde(rename = "displayPicture")]
     DisplayPicture { email: String, data: String },
+    #[serde(rename = "displayName")]
+    DisplayName { display_name: String },
     #[serde(rename = "disconnected")]
     Disconnected,
 }

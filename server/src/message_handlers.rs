@@ -1,10 +1,81 @@
 use crate::AppState;
 use crate::client_message::ClientMessage;
+use crate::cleanup_session_state;
+use crate::publish_server_message;
 use crate::server_message::ServerMessage;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use msnp11_sdk::{Client, Event, MsnpList, MsnpStatus, PersonalMessage, PlainText};
+use msnp11_sdk::{Client, Event, MsnpList, MsnpStatus, PersonalMessage, PlainText, SdkError};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{error, info};
+use tokio::time::{sleep, Instant};
+
+fn describe_login_error(error: &SdkError, email: &str, server: &str, port: u16, nexus_url: &str) -> String {
+    let mut message_lines = Vec::new();
+    let uses_https = nexus_url.starts_with("https://");
+
+    message_lines.push("Login failed.".to_string());
+
+    match error {
+        SdkError::ResolutionError => {
+            message_lines.push("The server name could not be resolved.".to_string());
+            message_lines.push("Possible reasons: the server address is wrong, DNS is down, or the host name cannot be reached from this network.".to_string());
+        }
+        SdkError::CouldNotConnectToServer | SdkError::Disconnected => {
+            message_lines.push("The server could not be reached.".to_string());
+            message_lines.push(format!("Possible reasons: {}:{} is offline, the port is blocked by a firewall, or a proxy is dropping the connection.", server, port));
+        }
+        SdkError::ServerIsBusy | SdkError::ServerError => {
+            message_lines.push("The server rejected or interrupted the login request.".to_string());
+            message_lines.push("Possible reasons: the service is busy, temporarily unavailable, or your email/password may be incorrect.".to_string());
+        }
+        SdkError::AuthenticationHeaderNotFound | SdkError::CouldNotGetAuthenticationString => {
+            message_lines.push("The authentication handshake did not complete.".to_string());
+            message_lines.push("Possible reasons: your email or password is wrong, the login service changed, or the authentication endpoint is unavailable.".to_string());
+            if uses_https {
+                message_lines.push("If you are using HTTPS, this can also happen when the certificate is outdated, untrusted, or blocked by a proxy/inspection box.".to_string());
+            }
+        }
+        SdkError::ProtocolNotSupported => {
+            message_lines.push("The server does not support the protocol version being used.".to_string());
+            message_lines.push("Possible reasons: the selected server is too old, too new, or expects a different MSNP version or client profile.".to_string());
+        }
+        SdkError::ReceivingError | SdkError::TransmittingError => {
+            message_lines.push("The login connection was interrupted while data was being exchanged.".to_string());
+            message_lines.push("Possible reasons: a transient network problem, packet filtering, or a TLS/SSL handshake failure if the login endpoint is HTTPS.".to_string());
+        }
+        SdkError::InvalidArgument => {
+            message_lines.push("The login request included an invalid value.".to_string());
+            message_lines.push("Possible reasons: a malformed email, an invalid server name, or a bad port number.".to_string());
+        }
+        _ => {
+            message_lines.push("The login failed for an unexpected reason.".to_string());
+            message_lines.push("Possible reasons: check the server settings, network connection, and credentials, then try again.".to_string());
+        }
+    }
+
+    message_lines.push(format!("Account: {}", email));
+    message_lines.join("\n")
+}
+
+async fn wait_for_own_profile(state: &AppState, timeout: Duration) {
+    let started = Instant::now();
+
+    loop {
+        let display_name_ready = state.display_name.read().await.is_some();
+        let personal_message_ready = state.personal_message.read().await.is_some();
+
+        if display_name_ready && personal_message_ready {
+            return;
+        }
+
+        if started.elapsed() >= timeout {
+            return;
+        }
+
+        sleep(Duration::from_millis(25)).await;
+    }
+}
 
 pub async fn handle_client_message(
     msg: ClientMessage,
@@ -32,6 +103,9 @@ pub async fn handle_client_message(
         ClientMessage::SetPersonalMessage { message } => {
             handle_set_personal_message(message, session_id, state).await
         }
+        ClientMessage::SetDisplayName { display_name } => {
+            handle_set_display_name(display_name, session_id, state).await
+        }
         ClientMessage::AddContact { email } => handle_add_contact(email, session_id, state).await,
         ClientMessage::RemoveContact { email } => handle_remove_contact(email, state).await,
         ClientMessage::BlockContact { email } => handle_block_contact(email, state).await,
@@ -49,7 +123,7 @@ pub async fn handle_client_message(
     }
 }
 
-async fn handle_login(
+pub async fn handle_login(
     email: String,
     password: String,
     server: String,
@@ -72,6 +146,113 @@ async fn handle_login(
             );
             info!("[LOGIN] Attempting login with SDK for email: {}", email);
 
+            let state_clone = state.clone();
+            let account_email = email.clone();
+            client.add_event_handler_closure(move |event| {
+                let state_clone = state_clone.clone();
+                let account_email = account_email.clone();
+
+                async move {
+                    match &event {
+                        Event::DisplayName(display_name) => {
+                            state_clone.set_own_display_name(Some(display_name.clone())).await;
+                        }
+                        Event::PersonalMessageUpdate { email, personal_message } => {
+                            if *email == account_email {
+                                state_clone
+                                    .set_own_personal_message(Some(personal_message.psm.clone()))
+                                    .await;
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    // Handle SessionAnswered specially - store it pending until we know which contact it's for
+                    if let Event::SessionAnswered(switchboard) = &event {
+                        info!("[SWITCHBOARD] SessionAnswered received");
+
+                        // Add event handler to the SessionAnswered switchboard
+                        let state_for_switchboard = state_clone.clone();
+                        switchboard.add_event_handler_closure(move |sb_event| {
+                            let state_for_switchboard = state_for_switchboard.clone();
+                            async move {
+                                let msg = event_to_server_message(sb_event);
+                                if let Some(msg) = msg {
+                                    publish_server_message(&state_for_switchboard, msg).await;
+                                }
+                            }
+                        });
+
+                        // Store as pending - we'll match it with ParticipantInSwitchboard event
+                        state_clone
+                            .pending_switchboards
+                            .write()
+                            .await
+                            .push(switchboard.clone());
+
+                        info!("[SWITCHBOARD] SessionAnswered switchboard stored as pending");
+                    }
+
+                    // Handle ParticipantInSwitchboard - match with pending switchboard
+                    if let Event::ParticipantInSwitchboard { email: participant_email } = &event {
+                        info!("[SWITCHBOARD] ParticipantInSwitchboard for {}", participant_email);
+
+                        // Get current user's email to filter out self-participant events
+                        let current_user_email = state_clone
+                            .user_email
+                            .read()
+                            .await;
+
+                        // Skip if this is the current user (we don't create switchboards to ourselves)
+                        if let Some(ref user_email) = *current_user_email
+                            && participant_email == user_email {
+                                info!("[SWITCHBOARD] Skipping self-participant event for {}", participant_email);
+                                // Don't process further, but still send the event to UI
+                                let msg = event_to_server_message(event);
+                                if let Some(msg) = msg {
+                                    publish_server_message(&state_clone, msg).await;
+                                }
+                                return;
+                            }
+
+                        // Only match pending switchboards if we don't already have one for this contact
+                        let already_exists = state_clone
+                            .switchboards
+                            .read()
+                            .await
+                            .contains_key(participant_email);
+
+                        if !already_exists {
+                            info!("[SWITCHBOARD] Checking for pending switchboard for {}", participant_email);
+                            // Check if we have a pending switchboard for this session
+                            let mut pending = state_clone.pending_switchboards.write().await;
+                            if let Some(switchboard) = pending.pop() {
+                                info!("[SWITCHBOARD] Matched pending switchboard with participant {}", participant_email);
+
+                                // Store it in the switchboards map
+                                state_clone
+                                    .switchboards
+                                    .write()
+                                    .await
+                                    .insert(participant_email.clone(), switchboard);
+
+                                info!("[SWITCHBOARD] Stored switchboard for {}", participant_email);
+                            } else {
+                                info!("[SWITCHBOARD] No pending switchboard available for {}", participant_email);
+                            }
+                        } else {
+                            info!("[SWITCHBOARD] Switchboard already exists for {}, skipping", participant_email);
+                        }
+                    }
+
+                    let msg = event_to_server_message(event);
+                    if let Some(msg) = msg {
+                        // Ignore send errors - channel may be closed if client disconnected
+                        publish_server_message(&state_clone, msg).await;
+                    }
+                }
+            });
+
             let result = client
                 .login(email.clone(), &password, &nexus_url, "polyMSNP", "7.0")
                 .await;
@@ -89,101 +270,7 @@ async fn handle_login(
                 }
                 Ok(Event::Authenticated) => {
                     info!("[LOGIN] User {} successfully authenticated!", email);
-                    info!("[LOGIN] Setting up event handler for email: {}", email);
-                    // Set up event handler
-                    let state_clone = state.clone();
-
-                    client.add_event_handler_closure(move |event| {
-                        let state_clone = state_clone.clone();
-
-                        async move {
-                            // Handle SessionAnswered specially - store it pending until we know which contact it's for
-                            if let Event::SessionAnswered(switchboard) = &event {
-                                info!("[SWITCHBOARD] SessionAnswered received");
-
-                                // Add event handler to the SessionAnswered switchboard
-                                let event_tx_inner = state_clone.event_tx.clone();
-                                switchboard.add_event_handler_closure(move |sb_event| {
-                                    let event_tx_inner = event_tx_inner.clone();
-                                    async move {
-                                        let msg = event_to_server_message(sb_event);
-                                        if let Some(msg) = msg {
-                                            let _ = event_tx_inner.send(msg);
-                                        }
-                                    }
-                                });
-
-                                // Store as pending - we'll match it with ParticipantInSwitchboard event
-                                state_clone
-                                    .pending_switchboards
-                                    .write()
-                                    .await
-                                    .push(switchboard.clone());
-
-                                info!("[SWITCHBOARD] SessionAnswered switchboard stored as pending");
-                            }
-
-                            // Handle ParticipantInSwitchboard - match with pending switchboard
-                            let event_tx = state_clone.event_tx;
-                            if let Event::ParticipantInSwitchboard { email: participant_email } = &event {
-                                info!("[SWITCHBOARD] ParticipantInSwitchboard for {}", participant_email);
-
-                                // Get current user's email to filter out self-participant events
-                                let current_user_email = state_clone
-                                    .user_email
-                                    .read()
-                                    .await;
-
-                                // Skip if this is the current user (we don't create switchboards to ourselves)
-                                if let Some(ref user_email) = *current_user_email
-                                    && participant_email == user_email {
-                                        info!("[SWITCHBOARD] Skipping self-participant event for {}", participant_email);
-                                        // Don't process further, but still send the event to UI
-                                        let msg = event_to_server_message(event);
-                                        if let Some(msg) = msg {
-                                            let _ = event_tx.send(msg);
-                                        }
-                                        return;
-                                    }
-
-                                // Only match pending switchboards if we don't already have one for this contact
-                                let already_exists = state_clone
-                                    .switchboards
-                                    .read()
-                                    .await
-                                    .contains_key(participant_email);
-
-                                if !already_exists {
-                                    info!("[SWITCHBOARD] Checking for pending switchboard for {}", participant_email);
-                                    // Check if we have a pending switchboard for this session
-                                    let mut pending = state_clone.pending_switchboards.write().await;
-                                    if let Some(switchboard) = pending.pop() {
-                                        info!("[SWITCHBOARD] Matched pending switchboard with participant {}", participant_email);
-
-                                        // Store it in the switchboards map
-                                        state_clone
-                                            .switchboards
-                                            .write()
-                                            .await
-                                            .insert(participant_email.clone(), switchboard);
-
-                                        info!("[SWITCHBOARD] Stored switchboard for {}", participant_email);
-                                    } else {
-                                        info!("[SWITCHBOARD] No pending switchboard available for {}", participant_email);
-                                    }
-                                } else {
-                                    info!("[SWITCHBOARD] Switchboard already exists for {}, skipping", participant_email);
-                                }
-                            }
-
-                            let msg = event_to_server_message(event);
-                            if let Some(msg) = msg {
-                                // Ignore send errors - channel may be closed if client disconnected
-                                let _ = event_tx.send(msg);
-                            }
-                        }
-                    });
-
+                    wait_for_own_profile(state, Duration::from_millis(750)).await;
                     info!("[LOGIN] Storing session for email: {}", email);
                     *state.session.lock().await = Some(client);
 
@@ -220,7 +307,7 @@ async fn handle_login(
                 Err(e) => {
                     error!("[LOGIN] Login failed for email: {} - Error: {:?}", email, e);
                     return Some(ServerMessage::Error {
-                        message: format!("Login failed: {:?}", e),
+                        message: describe_login_error(&e, &email, &server, port, &nexus_url),
                     });
                 }
                 _ => {
@@ -237,7 +324,7 @@ async fn handle_login(
                 email, e
             );
             return Some(ServerMessage::Error {
-                message: format!("Connection failed: {:?}", e),
+                message: describe_login_error(&e, &email, &server, port, &nexus_url),
             });
         }
     }
@@ -420,6 +507,36 @@ async fn handle_set_personal_message(
     }
 }
 
+async fn handle_set_display_name(
+    display_name: String,
+    session_id: &str,
+    state: &AppState,
+) -> Option<ServerMessage> {
+    info!("Setting display name to '{}' for session {}", display_name, session_id);
+    if let Some(client) = state.session.lock().await.as_ref() {
+        match client.set_display_name(&display_name).await {
+            Ok(_) => {
+                info!("Successfully set display name to '{}'", display_name);
+                let msg = ServerMessage::DisplayName {
+                    display_name: display_name.clone(),
+                };
+                publish_server_message(state, msg.clone()).await;
+                None
+            }
+            Err(e) => {
+                error!("Failed to set display name: {:?}", e);
+                Some(ServerMessage::Error {
+                    message: format!("Failed to set display name: {:?}", e),
+                })
+            }
+        }
+    } else {
+        Some(ServerMessage::Error {
+            message: "Not logged in".to_string(),
+        })
+    }
+}
+
 async fn handle_add_contact(
     email: String,
     session_id: &str,
@@ -517,13 +634,13 @@ async fn handle_start_conversation(
                 let switchboard = Arc::new(switchboard);
 
                 // Set up event handler for switchboard
-                let event_tx = state.event_tx.clone();
+                let state_for_switchboard = state.clone();
                 switchboard.add_event_handler_closure(move |event| {
-                    let event_tx = event_tx.clone();
+                    let state_for_switchboard = state_for_switchboard.clone();
                     async move {
                         let msg = event_to_server_message(event);
                         if let Some(msg) = msg {
-                            let _ = event_tx.send(msg);
+                            publish_server_message(&state_for_switchboard, msg).await;
                         }
                     }
                 });
@@ -662,34 +779,17 @@ async fn handle_send_typing(email: String, state: &AppState) -> Option<ServerMes
 }
 
 async fn handle_close_conversation(email: String, state: &AppState) -> Option<ServerMessage> {
-    state.switchboards.write().await.remove(&email);
+    if let Some(switchboard) = state.switchboards.write().await.remove(&email) {
+        let _ = switchboard.disconnect().await;
+    }
     None
 }
 
 async fn handle_logout(session_id: &str, state: &AppState) -> Option<ServerMessage> {
     info!("Logging out session: {}", session_id);
 
-    // Clean up when forwarding task ends
-    // Disconnect all switchboards first
-    for (email, switchboard) in state.switchboards.write().await.drain() {
-        info!(
-            "Disconnecting switchboard with {} on forward task end",
-            email
-        );
-        let _ = switchboard.disconnect().await;
-    }
-
-    // Clean up pending switchboards
-    state.pending_switchboards.write().await.clear();
-
-    // Clean up user email
-    *state.user_email.write().await = None;
-
-    // Disconnect client (this closes the notification server connection)
-    if let Some(client) = state.session.lock().await.as_ref() {
-        info!("Disconnecting client for session {}", session_id);
-        let _ = client.disconnect().await;
-    }
+    *state.persistent.lock().await = false;
+    cleanup_session_state(state).await;
 
     // Event channel gets dropped with state later
     info!("Successfully logged out session: {}", session_id);
