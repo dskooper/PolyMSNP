@@ -30,10 +30,10 @@ This means support for some browsers from 1999/2000 onwards (Firefox 1, Chrome 1
 
 The following browsers are confirmed not working:
 - Internet Explorer 8 and earlier (support will come soon!)
+- Opera Mini (will probably never work)
 
 The following browsers have not been tested, please try them out and let me know:
 - Opera (Mobile)
-  - Opera Mini handles JavaScript in a way that means PolyMSNP would never be usable
 - Netscape Navigator
 - Safari 1
 - Chrome 1
