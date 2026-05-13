@@ -13,20 +13,31 @@ This repository contains the Rust-based source code for the server.
 > If you are hosting your own instance of PolyMSNP, please let me know!
 
 As of right now, there are **2** websites hosting this server:
-- https://pmsnp.kooper.online (not 24/7, only for testing)
+- http://pmsnp.kooper.online | https://pmsnp.kooper.online (not 24/7, only for testing)
   - If you get an error (e.g. 1033) when trying to access, 99% chance it is down!
 - https://msn.rawrr.dev (24/7, updates weekly per cronjob)
 
 Even so, it is highly recommended to host PolyMSNP yourself!
 
 ## Compatibility
-(**As of writing**) iMSNP's frontend is designed for iOS 6 and therefore should work flawlessly on Safari 6 and newer. <br>
-In the future, there are plans to implement more frontend options.
+The legacy UI requires at least Internet Explorer 9 to function correctly.
+
+The modern UI has not been extensively tested, however any modern browser should just work.
 
 ### JavaScript/ECMAScript
-Currently, the main JS script used to communicate between the device and the server is compliant with ECMAScript 5. <br>
-This means support for most browses from 2009/2010 onwards (Firefox 4, Chrome/Safari 5, IE9). <br>
-*An ES3 backport is planned*, anything older and it would probably be nigh impossible.
+Currently, the main JS script used to communicate between the device and the server is compliant with ECMAScript 3. <br>
+This means support for some browsers from 1999/2000 onwards (Firefox 1, Chrome 1, Safari 1). <br>
+
+The following browsers are confirmed not working:
+- Internet Explorer 8 and earlier (support will come soon!)
+
+The following browsers have not been tested, please try them out and let me know:
+- Opera (Mobile)
+  - Opera Mini handles JavaScript in a way that means PolyMSNP would never be usable
+- Netscape Navigator
+- Safari 1
+- Chrome 1
+- Firefox 1
 
 ## Features
 - Specify your own (or use predefined) MSNP11-compatible third-party servers
@@ -37,9 +48,7 @@ This means support for most browses from 2009/2010 onwards (Firefox 4, Chrome/Sa
 
 ## Todo
 Next build:
-- [ ] Generic frontend for desktop/non-iOS mobile users with dark mode support
-- [ ] Backport app.js to ECMAScript 3
-  - [ ] Basic frontend for very old browsers
+- [ ] Dark mode support for the generic UI
 
 Next release:
 - [ ] View profile pictures
