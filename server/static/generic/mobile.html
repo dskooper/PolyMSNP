@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PolyMSNP</title>
+    <link rel="stylesheet" href="generic.css">
+</head>
+<body class="generic-mobile" data-chat-layout="slide">
+    <div id="loginScreen" class="screen">
+        <div class="navbar">
+            <div class="brand">PolyMSNP</div>
+            <div class="nav-actions">
+                <button id="reloadBtn">Reload</button>
+            </div>
+        </div>
+        <div class="login-wrap">
+            <form id="loginForm" onsubmit="return false;">
+                <div class="login-grid">
+                    <div>
+                        <label for="email">Email</label>
+                        <input type="text" id="email" name="email" required>
+                    </div>
+                    <div>
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <div>
+                        <label for="service">Service</label>
+                        <select id="service" name="service" required>
+                            <option value="crosstalk">CrossTalk</option>
+                            <option value="crosstalk_nodispatch">CrossTalk (alt)</option>
+                            <option value="legacy">Legacy MSN</option>
+                            <option value="custom">Custom...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label><input type="checkbox" id="forceHttp" name="forceHttp"> Force HTTP</label>
+                    </div>
+                    <div class="custom-service-row" style="display:none;">
+                        <label for="server">Main Server</label>
+                        <input type="text" id="server" name="server">
+                    </div>
+                    <div class="custom-service-row" style="display:none;">
+                        <label for="port">Port</label>
+                        <input type="text" id="port" name="port" value="1863" maxlength="5">
+                    </div>
+                    <div class="custom-service-row" style="display:none;">
+                        <label for="nexus">Nexus</label>
+                        <input type="text" id="nexus" name="nexus">
+                    </div>
+                    <div class="custom-service-row" style="display:none;">
+                        <label for="config">Config</label>
+                        <input type="text" id="config" name="config">
+                    </div>
+                    <div>
+                        <button type="submit" id="loginBtn">Sign In</button>
+                    </div>
+                </div>
+            </form>
+            <div id="loginError" class="error-line"></div>
+            <div id="loginStatus" class="status-line"></div>
+        </div>
+    </div>
+
+    <div id="appViewport" class="mobile-viewport" style="display:none;">
+            <div class="navbar">
+            <div class="brand">PolyMSNP</div>
+            <div class="nav-actions">
+                <button id="logoutBtn">Sign out</button>
+            </div>
+        </div>
+
+        <div class="main-wrap">
+            <div class="mobile-track">
+                <div id="mainScreen" class="mobile-page" style="display:none;">
+                    <div id="tab-home" class="generic-panel active">
+                        <div class="home-layout">
+                            <div class="sidebar">
+                                <div class="sidebar-head">
+                                    <button id="editContactsBtn">Edit</button>
+                                    <button id="removeContactsBtn" style="display:none;">Remove</button>
+                                </div>
+                                <div class="collapsible-sections">
+                                    <div class="profile-box">
+                                        <div>Email: <span id="currentEmail" class="profile-value-empty">(not available)</span></div>
+                                        <div>Username: <span id="currentDisplayName" class="profile-value-empty">(loading...)</span></div>
+                                        <div>Personal Message: <span id="currentPersonalMessage" class="profile-value-empty">(none)</span></div>
+                                    </div>
+                                </div>
+                                <div id="contactList"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-settings" class="generic-panel placeholder-panel">
+                        <h2>Settings</h2>
+                        <div class="form-row">
+                            <label for="statusSelect">Status</label>
+                            <select id="statusSelect">
+                                <option value="Online">Online</option>
+                                <option value="Busy">Busy</option>
+                                <option value="Away">Away</option>
+                                <option value="BeRightBack">Be Right Back</option>
+                                <option value="OnThePhone">On The Phone</option>
+                                <option value="OutToLunch">Out To Lunch</option>
+                                <option value="Idle">Idle</option>
+                                <option value="Invisible">Invisible</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="emoticonPackSelect">Emoticons</label>
+                            <select id="emoticonPackSelect">
+                                <option value="" disabled selected>Loading...</option>
+                            </select>
+                        </div>
+                        <div class="form-row inline">
+                            <input type="text" id="displayNameInput" maxlength="129" placeholder="Change username">
+                            <button id="setDisplayNameBtn">Set</button>
+                        </div>
+                        <div class="form-row inline">
+                            <input type="text" id="personalMessageInput" maxlength="129" placeholder="Set personal message">
+                            <button id="setPsmBtn">Set</button>
+                        </div>
+                    </div>
+
+                    <div id="tab-about" class="generic-panel placeholder-panel">
+                        <h2>About PolyMSNP</h2>
+                        <p><strong>PolyMSNP</strong> is a lightweight web-based client for the MSNP instant messaging protocol. It allows you to connect to MSNP11-compatible servers through your web browser.</p>
+                        <h3>Features</h3>
+                        <ul>
+                            <li>Specify your own (or use predefined) MSNP11-compatible third-party servers</li>
+                            <li>Send and receive messages, nudges, and emoticons</li>
+                            <li>Add and remove contacts from your contact list</li>
+                            <li>View and change your own username, personal message, and status</li>
+                            <li>View contact's status and personal message</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div id="chatScreen" class="mobile-page" style="display:none;">
+                    <div class="chat-host" style="display:block;">
+                        <div class="chat-head">
+                            <div class="chat-title" id="chatTitle">Chat</div>
+                            <div>
+                                <button id="nudgeBtn">Nudge</button>
+                                <button id="closeChatBtn">Back</button>
+                            </div>
+                        </div>
+                        <div id="messageContainer"></div>
+                        <div class="message-input-row">
+                            <input type="text" id="messageInput" maxlength="512" placeholder="Type a message...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-tabs">
+            <button class="tab-btn active" data-tab="home">Home</button>
+            <button class="tab-btn" data-tab="settings">Settings</button>
+            <button class="tab-btn" data-tab="about">About</button>
+        </div>
+    </div>
+
+    <script src="/app.js?v=generic-1"></script>
+    <script>
+    (function() {
+        function byId(id) {
+            return document.getElementById(id);
+        }
+
+        function setTab(tabName) {
+            var tabs = ["home", "settings", "about"];
+            var i;
+            for (i = 0; i < tabs.length; i++) {
+                var tab = tabs[i];
+                var panel = byId("tab-" + tab);
+                if (panel) {
+                    panel.className = tab === tabName ? "generic-panel active" : "generic-panel";
+                }
+            }
+
+            var buttons = document.getElementsByTagName("button");
+            for (i = 0; i < buttons.length; i++) {
+                if (buttons[i].getAttribute("data-tab")) {
+                    buttons[i].className = buttons[i].getAttribute("data-tab") === tabName ? "tab-btn active" : "tab-btn";
+                }
+            }
+        }
+
+        function bindTabs() {
+            var buttons = document.getElementsByTagName("button");
+            var i;
+            for (i = 0; i < buttons.length; i++) {
+                if (buttons[i].getAttribute("data-tab")) {
+                    buttons[i].onclick = function() {
+                        setTab(this.getAttribute("data-tab"));
+                        return false;
+                    };
+                }
+            }
+        }
+
+        function exposeViewport() {
+            var loginScreen = byId("loginScreen");
+            var mainScreen = byId("mainScreen");
+            var appViewport = byId("appViewport");
+            var observer;
+
+            if (!loginScreen || !mainScreen || !appViewport) {
+                return;
+            }
+
+            function syncVisibility() {
+                if (mainScreen.style.display === "block" || mainScreen.style.display === "") {
+                    appViewport.style.display = "block";
+                }
+            }
+
+            syncVisibility();
+
+            if (window.MutationObserver) {
+                observer = new MutationObserver(syncVisibility);
+                observer.observe(mainScreen, { attributes: true, attributeFilter: ["style"] });
+            }
+        }
+
+        if (window.addEventListener) {
+            window.addEventListener("load", function() {
+                bindTabs();
+                exposeViewport();
+            });
+        } else {
+            window.onload = function() {
+                bindTabs();
+                exposeViewport();
+            };
+        }
+    })();
+    </script>
+</body>
+</html>

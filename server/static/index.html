@@ -2,174 +2,44 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="PolyMSNP">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <title>PolyMSNP for iOS</title>
-    <link rel="stylesheet" href="saurik.css?v=20260418-28">
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to PolyMSNP</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #eef1f5; color: #1d2633; margin: 0; }
+        .wrap { max-width: 720px; margin: 40px auto; background: #fff; border: 1px solid #cfd7e2; border-radius: 8px; padding: 20px; }
+        h1 { margin-top: 0; }
+        ul { padding-left: 20px; }
+        a { color: #1b4f87; }
+    </style>
 </head>
-<body class="pinstripe">
-    <!-- Login Screen -->
-    <div id="loginScreen" class="screen">
-        <div class="navbar">
-            PolyMSNP
-            <div class="nav-right">
-                <button id="reloadBtn" class="btn-secondary">Reload</button>
-            </div>
+<body>
+    <div class="wrap">
+        <h1>PolyMSNP</h1>
+        <div class="notice" style="border: 3px solid #c00; border-radius: 8px; padding: 0 5%;">
+            <p>
+                <strong>Notices</strong> <br>
+                <ul>
+                    <li>Connection issues can occur if your root certificates are outdated. <a href="docs/rootcerts.html">Click here for more information.</a></li>
+                    <li>This instance may contain features that aren't in the main repository yet.</li>
+                    <li>Opera Mini support is untested but likely unsupported due to how it handles JavaScript.</li>
+                </ul>
+            </p>
         </div>
-        <div class="login-caption">Work-in-progress, bugs and issues may occur</div>
-        <panel class="screen-panel">
-            <form id="loginForm" onsubmit="return false;">
-                <div class="login-credentials">
-                    <div class="login-row">
-                        <label for="email">Email</label>
-                        <input type="email" id="email" name="email" required autocomplete="email" placeholder="example@hotmail.com">
-                    </div>
-                    <div class="login-row">
-                        <label for="password">Password</label>
-                        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Required">
-                    </div>
-                    <div class="login-row">
-                        <label for="service">Service</label>
-                        <select id="service" name="service" required>
-                            <option value="crosstalk">CrossTalk</option>
-                            <option value="crosstalk_nodispatch">CrossTalk (alt)</option>
-                            <option value="legacy">Legacy MSN</option>
-                            <option value="custom">Custom...</option>
-                        </select>
-                    </div>
-                    <div class="login-row switch-row">
-                        <label for="forceHttp">Force HTTP</label>
-                        <input type="checkbox" id="forceHttp" name="forceHttp" class="row-switch">
-                    </div>
-                    <div class="login-row custom-service-row" id="customServerRow" style="display:none;">
-                        <label for="server">Main Server</label>
-                        <input type="text" id="server" name="server" placeholder="Required">
-                    </div>
-                    <div class="login-row custom-service-row" id="customPortRow" style="display:none;">
-                        <label for="port">Port</label>
-                        <input type="tel" id="port" name="port" placeholder="1863" value="1863" maxlength="5" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                    <div class="login-row custom-service-row" id="customNexusRow" style="display:none;">
-                        <label for="nexus">Nexus</label>
-                        <input type="text" id="nexus" name="nexus" placeholder="Required">
-                    </div>
-                    <div class="login-row custom-service-row" id="customConfigRow" style="display:none;">
-                        <label for="config">Config</label>
-                        <input type="text" id="config" name="config" placeholder="Optional">
-                    </div>
-                </div>
-
-                <button type="submit" id="loginBtn" class="btn-primary">Sign In</button>
-                <div class="message-strip">
-                    <div id="loginError" class="error-message" style="display:none;"></div>
-                    <div id="loginStatus" class="status-message" style="display:none;"></div>
-                </div>
-                <div class="login-caption">PolyMSNP lets you connect with MSN Messenger contacts on the web!</div>
-            </form>
-        </panel>
+        <p>
+            <b>PolyMSNP</b> is a lightweight web-based client for the MSNP instant messaging protocol. <br>
+            It allows you to connect to MSNP11-compatible servers through your web browser.
+        </p>
+        <p>Select an interface to continue:</p>
+        <ul>
+            <li><a href="generic/desktop.html">Generic interface for desktops and tablets</a></li>
+            <li><a href="generic/mobile.html">Generic interface for mobile devices</a></li>
+            <li><a href="legacy/index.html">Legacy interface for older browsers (IE9+)</a></li>
+        </ul>
+        <p>Below are interfaces that are either experimental or no longer maintained:</p>
+        <ul>
+            <li><a href="extra/ioslike.html">iOS replica interface (requires WebKit/Safari 6+, unmaintained)</a></li>
+        </ul>
+        <p>You can check out the <a href="https://github.com/dskooper/polymsnp">GitHub repository</a> for more information.</p>
     </div>
-
-    <!-- Main Screen -->
-    <div id="mainScreen" class="screen" style="display:none;">
-        <div class="navbar">
-            <div class="nav-left">
-                <button id="editContactsBtn" class="btn-secondary">Edit</button>
-                <button id="removeContactsBtn" class="btn-secondary" style="display:none;">Remove</button>
-            </div>
-            Contacts
-            <div class="nav-right">
-                <button id="logoutBtn" class="btn-secondary">Sign Out</button>
-            </div>
-        </div>
-        <panel class="screen-panel content">
-            <div class="collapsible-sections">
-                <div class="collapsible-section">
-                    <button class="collapsible-toggle" id="toggleSettings">Settings ▼</button>
-                    <div class="collapsible-content" id="settingsSection" style="display:none;">
-                        <div class="profile-readout">
-                            <div class="profile-row"><span class="profile-label">Email:</span> <span id="currentEmail" class="profile-value-empty">(not available)</span></div>
-                            <div class="profile-row"><span class="profile-label">Username:</span> <span id="currentDisplayName" class="profile-value-empty">(loading...)</span></div>
-                            <div class="profile-row"><span class="profile-label">Personal Message:</span> <span id="currentPersonalMessage" class="profile-value-empty">(none)</span></div>
-                        </div>
-                        <div class="settings-row select-row">
-                            <label for="statusSelect">Status</label>
-                            <select id="statusSelect" class="status-select">
-                                <option value="Online">Online</option>
-                                <option value="Busy">Busy</option>
-                                <option value="Away">Away</option>
-                                <option value="BeRightBack">Be Right Back</option>
-                                <option value="OnThePhone">On The Phone</option>
-                                <option value="OutToLunch">Out To Lunch</option>
-                                <option value="Idle">Idle</option>
-                                <option value="Invisible">Invisible</option>
-                            </select>
-                        </div>
-                        <div class="settings-row select-row">
-                            <label for="emoticonPackSelect">Emoticons</label>
-                            <select id="emoticonPackSelect" class="status-select">
-                                <option value="" disabled selected>Loading...</option>
-                            </select>
-                        </div>
-                        <div class="settings-row">
-                            <input type="text" id="displayNameInput" placeholder="Change username..." maxlength="129">
-                            <button id="setDisplayNameBtn" class="btn-small">Set</button>
-                        </div>
-                        <div class="settings-row">
-                            <input type="text" id="personalMessageInput" placeholder="Set personal message..." maxlength="129">
-                            <button id="setPsmBtn" class="btn-small">Set</button>
-                        </div>
-                        <div class="settings-row">
-                            <input type="email" id="addContactInput" placeholder="Add contact email...">
-                            <button id="addContactBtn" class="btn-small">Add</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="contactList" class="contact-list"></div>
-        </panel>
-    </div>
-
-    <!-- Chat Screen -->
-    <div id="chatScreen" class="screen" style="display:none;">
-        <div class="navbar">
-            <div class="nav-left">
-                <button id="nudgeBtn" class="btn-small">Nudge</button>
-            </div>
-            <span id="chatTitle">Chat</span>
-            <div class="nav-right">
-                <button id="closeChatBtn" class="btn-secondary">Close</button>
-            </div>
-        </div>
-        <panel class="screen-panel content chat-layout">
-            <div id="messageContainer" class="message-container"></div>
-            <div class="message-input-container">
-                <input type="text" id="messageInput" placeholder="Type a message..." maxlength="512">
-            </div>
-        </panel>
-    </div>
-
-    <script src="/app.js?v=20260418-6"></script>
-    <script>
-        var userAgent = window.navigator && window.navigator.userAgent ? window.navigator.userAgent : '';
-        if ( /(iPhone|iPad|iPod)/.test(userAgent) && /OS [1-5]_/.test(userAgent) && /Safari/.test(userAgent) ) {
-            alert("PolyMSNP does not support iOS 5 and earlier at the moment. Please bear with us...");
-            document.getElementById('loginBtn').disabled = true;
-            document.getElementById("loginBtn").textContent = "Unavailable";
-            document.getElementById('loginError').textContent = "DeviceUnsupported: iOS 6 or later is required.";
-            document.getElementById('loginError').style.display = 'block'; 
-
-            // Wait until page is loaded before removing login-ready class from loginBtn
-            window.addEventListener('load', function() {
-                document.getElementById('loginBtn').classList.remove('login-ready');
-            });
-        } else if ( /MSIE|Trident|Opera Mini/.test(userAgent) ) { // Detection for IE and Opera Mini since they are known to break the CSS.
-            alert("PolyMSNP's support for very old desktop/mobile browsers is a work-in-progress. Stay tuned, and proceed at your own risk!");
-        }
-    </script>
 </body>
 </html>
-

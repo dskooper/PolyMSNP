@@ -1,0 +1,139 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+    <title>PolyMSNP Legacy</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <link rel="stylesheet" type="text/css" href="legacy.css">
+</head>
+<body data-chat-layout="stacked">
+    <div id="loginScreen">
+        <div class="bar"><span class="title">PolyMSNP Legacy</span><span class="right"><button id="reloadBtn">Reload</button></span><div class="clr"></div></div>
+        <div class="box">
+            <form id="loginForm" onsubmit="return false;">
+                <div class="row">Email: <input type="text" id="email" name="email"></div>
+                <div class="row">Password: <input type="password" id="password" name="password"></div>
+                <div class="row">Service:
+                    <select id="service" name="service">
+                        <option value="crosstalk">CrossTalk</option>
+                        <option value="crosstalk_nodispatch">CrossTalk (alt)</option>
+                        <option value="legacy">Legacy MSN</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+                <div class="row"><label><input type="checkbox" id="forceHttp" name="forceHttp"> Force HTTP</label></div>
+                <div class="row custom-service-row" style="display:none;">Main Server: <input type="text" id="server" name="server"></div>
+                <div class="row custom-service-row" style="display:none;">Port: <input type="text" id="port" name="port" value="1863" maxlength="5"></div>
+                <div class="row custom-service-row" style="display:none;">Nexus: <input type="text" id="nexus" name="nexus"></div>
+                <div class="row custom-service-row" style="display:none;">Config: <input type="text" id="config" name="config"></div>
+                <div class="row"><button id="loginBtn" type="submit">Sign In</button></div>
+            </form>
+            <div id="loginError" style="display:none;color:#a00;"></div>
+            <div id="loginStatus" style="display:none;color:#060;"></div>
+        </div>
+    </div>
+
+    <div id="mainScreen" style="display:none;">
+        <div class="bar">
+            <span class="title">PolyMSNP</span>
+            <span class="right">
+                <span class="tabs">
+                    <a href="#" onclick="showLegacyTab('home');return false;">Home</a>
+                    <a href="#" onclick="showLegacyTab('settings');return false;">Settings</a>
+                    <a href="#" onclick="showLegacyTab('about');return false;">About</a>
+                </span>
+                <button id="logoutBtn">Sign out</button>
+            </span>
+            <div class="clr"></div>
+        </div>
+
+        <div id="legacy-home" class="box">
+            <div class="half">
+                <div class="row"><button id="editContactsBtn">Edit</button> <button id="removeContactsBtn" style="display:none;">Remove</button> <button id="openAddContactBtn" class="icon-btn" type="button" title="Add contact">+</button></div>
+                <div class="collapsible-sections">
+                    <div class="row">Email: <span id="currentEmail" class="profile-value-empty">(not available)</span></div>
+                    <div class="row">Username: <span id="currentDisplayName" class="profile-value-empty">(loading...)</span></div>
+                    <div class="row">Personal Message: <span id="currentPersonalMessage" class="profile-value-empty">(none)</span></div>
+                </div>
+                <div id="contactList"></div>
+            </div>
+            <div class="half" id="chatScreen" style="display:none;">
+                <div class="row"><b id="chatTitle">Chat</b> <button id="nudgeBtn">Nudge</button> <button id="closeChatBtn">Close</button></div>
+                <div id="messageContainer"></div>
+                <div class="row"><input type="text" id="messageInput" style="width:96%;"></div>
+            </div>
+            <div class="clr"></div>
+        </div>
+
+        <div id="addContactModal" class="legacy-modal" style="display:none;">
+            <div class="legacy-modal-panel">
+                <div class="row"><b>Add Contact</b> <button id="closeAddContactBtn" class="icon-btn" type="button">x</button></div>
+                <div class="row">Email address: <input type="text" id="addContactInput" maxlength="129" placeholder="name@example.com"></div>
+                <div class="row"><button id="submitAddContactBtn" type="button">Add</button></div>
+            </div>
+        </div>
+
+        <div id="legacy-settings" class="box" style="display:none;">
+            <div class="row">Status:
+                <select id="statusSelect">
+                    <option value="Online">Online</option>
+                    <option value="Busy">Busy</option>
+                    <option value="Away">Away</option>
+                    <option value="BeRightBack">Be Right Back</option>
+                    <option value="OnThePhone">On The Phone</option>
+                    <option value="OutToLunch">Out To Lunch</option>
+                    <option value="Idle">Idle</option>
+                    <option value="Invisible">Invisible</option>
+                </select>
+            </div>
+            <div class="row">Emoticons:
+                <select id="emoticonPackSelect">
+                    <option value="" disabled="disabled" selected="selected">Loading...</option>
+                </select>
+            </div>
+            <div class="row">Display name: <input type="text" id="displayNameInput"> <button id="setDisplayNameBtn">Set</button></div>
+            <div class="row">Personal message: <input type="text" id="personalMessageInput"> <button id="setPsmBtn">Set</button></div>
+        </div>
+
+        <div id="legacy-about" class="box" style="display:none;">
+            <h3>About PolyMSNP</h3>
+            <p><b>PolyMSNP</b> is a lightweight web-based client for the MSNP instant messaging protocol. It allows you to connect to MSNP11-compatible servers through your web browser.</p>
+            <h4>Features</h4>
+            <ul style="margin:0;padding-left:20px;">
+                <li>Specify your own (or use predefined) MSNP11-compatible third-party servers</li>
+                <li>Send and receive messages, nudges, and emoticons</li>
+                <li>Add and remove contacts from your contact list</li>
+                <li>View and change your own username, personal message, and status</li>
+                <li>View contact's status and personal message</li>
+            </ul>
+        </div>
+    </div>
+
+    <style>
+        .contact-name { font-weight: bold; }
+    </style>
+    <script type="text/javascript">
+        function showLegacyTab(name) {
+            var home = document.getElementById('legacy-home');
+            var settings = document.getElementById('legacy-settings');
+            var about = document.getElementById('legacy-about');
+
+            home.style.display = name === 'home' ? 'block' : 'none';
+            settings.style.display = name === 'settings' ? 'block' : 'none';
+            about.style.display = name === 'about' ? 'block' : 'none';
+        };
+
+        // check if using IE8 or older
+        var isLegacyIE = (function() {
+            var ua = window.navigator.userAgent;
+            var msie = ua.indexOf('MSIE ');
+            if (msie > 0) {
+                var version = parseInt(ua.substring(msie + 5, ua.indexOf('.', msie)), 10);
+                return version <= 8;
+            }
+            return false;
+        })();
+        if (isLegacyIE) { alert("PolyMSNP requires at least Internet Explorer 9, for now. Please stay tuned for updates."); }
+    </script>
+    <script src="/app.js?v=legacy-1" type="text/javascript"></script>
+</body>
+</html>

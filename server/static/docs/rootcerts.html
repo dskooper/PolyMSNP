@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Root Certificates</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #eef1f5; color: #1d2633; margin: 0; }
+        .wrap { max-width: 720px; margin: 40px auto; background: #fff; border: 3px solid #f1a706; background-color: #ffe2a4; border-radius: 8px; padding: 20px; }
+        h1 { margin-top: 0; }
+        ul { padding-left: 20px; }
+        a { color: #1b4f87; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <h1>Root Certificates</h1>
+        <p>
+            If you are experiencing connection issues, it may be due to outdated root certificates in your browser. 
+            <br><br>
+            By default, PolyMSNP is configured to connect to your selected service via HTTPS, and outdated certificates can cause login to fail. While it is possible to force HTTP connections, it is not recommended as it can expose your credentials to attackers and is only provided for compatibility reasons.
+            <br><br>
+            Resolving the issue depends on your operating system, although in most cases as long as you are using an up-to-date operating system, your root certificates should be updated automatically.
+            <ul>
+                <li>
+                    <strong>Windows XP and later</strong> <br>
+                    A tool exists on GitHub to update root certificates called UpdateRootCertificates. You can download the latest release from <a href="https://github.com/asheroto/UpdateRootCertificates/releases/latest">here</a>.
+                </li>
+                <li>
+                    <strong>Mac OS X, iPhone OS, iPad OS</strong> <br>
+                    DER-encoded root certificates can be downloaded from <a href="//tlsroot.litten.ca">here</a>, with the option of downloading individual certificates or a <code>.mobileconfig</code> bundle. Do note that:
+                    <ul>
+                        <li><code>.mobileconfig</code> bundles will require at least Mac OS X 10.7.0 or iOS 3.0. <strong>Signed</strong> <code>.mobileconfig</code> bundles will require at least Mac OS X 10.7.3 or iOS 5.0.</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Android</strong> <br>
+                    The installation method depends on what Android version you are using.
+                    <ul>
+                        <li><strong>Android 7.0 and later</strong>: DER-encoded root certificates can be downloaded from <a href="//tlsroot.litten.ca">here</a>. After downloading, you can tap on the file to install it.</li>
+                        <li><strong>Android 6.0 and earlier</strong>: You will need to convert the DER-encoded certificate to PEM format, then copy it to your device and install it through the security settings. You can use OpenSSL to convert the certificate with the following command: <pre>openssl x509 -inform der -in certificate.cer -out certificate.pem</pre></li>
+                    </ul>
+                </li>
+            </ul>
+        </p>
+    </div>
+</body>
+</html>

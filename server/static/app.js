@@ -1,13 +1,148 @@
 (function() {
-    'use strict';
+    // functions for compatibility with old browsers
+    function trim(str) {
+        return str.replace(/^\s+|\s+$/g, '');
+    }
+    
+    function isArray(obj) {
+        return Object.prototype.toString.call(obj) === '[object Array]';
+    }
+
+    function on(target, eventName, handler) {
+        if (!target) {
+            return;
+        }
+
+        if (target.addEventListener) {
+            target.addEventListener(eventName, handler, false);
+            return;
+        }
+
+        if (target.attachEvent) {
+            target.attachEvent('on' + eventName, function() {
+                var event = window.event || {};
+                if (!event.target) {
+                    event.target = event.srcElement || target;
+                }
+                if (!event.preventDefault) {
+                    event.preventDefault = function() {
+                        event.returnValue = false;
+                    };
+                }
+                if (!event.stopPropagation) {
+                    event.stopPropagation = function() {
+                        event.cancelBubble = true;
+                    };
+                }
+                return handler.call(target, event);
+            });
+        }
+    }
+
+    function hasClassName(element, className) {
+        if (!element || !element.className) {
+            return false;
+        }
+
+        return (' ' + element.className + ' ').indexOf(' ' + className + ' ') !== -1;
+    }
+
+    function findFirstByClass(root, className) {
+        var elements;
+        var index;
+
+        if (!root) {
+            return null;
+        }
+
+        if (hasClassName(root, className)) {
+            return root;
+        }
+
+        elements = root.getElementsByTagName('*');
+        for (index = 0; index < elements.length; index++) {
+            if (hasClassName(elements[index], className)) {
+                return elements[index];
+            }
+        }
+
+        return null;
+    }
+
+    // polyfill json.stringify and json.parse
+    if (typeof window.JSON === 'undefined') {
+        window.JSON = {};
+    }
+    if (typeof window.JSON.stringify !== 'function') {
+        window.JSON.stringify = function(obj) {
+            if (obj === null) return 'null';
+            var type = typeof obj;
+            if (type === 'string') return '"' + obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
+            if (type === 'number') return (isFinite(obj) ? String(obj) : 'null');
+            if (type === 'boolean') return String(obj);
+            if (type === 'undefined') return undefined;
+            if (type === 'object') {
+                if (obj === null) return 'null';
+                if (isArray(obj)) {
+                    var arr = [];
+                    for (var i = 0; i < obj.length; i++) {
+                        var elem = window.JSON.stringify(obj[i]);
+                        arr.push(typeof elem === 'undefined' ? 'null' : elem);
+                    }
+                    return '[' + arr.join(',') + ']';
+                } else {
+                    var props = [];
+                    for (var key in obj) {
+                        if (obj.hasOwnProperty(key)) {
+                            var val = window.JSON.stringify(obj[key]);
+                            if (typeof val !== 'undefined') {
+                                props.push(window.JSON.stringify(key) + ':' + val);
+                            }
+                        }
+                    }
+                    return '{' + props.join(',') + '}';
+                }
+            }
+            return undefined;
+        };
+    }
+    if (typeof window.JSON.parse !== 'function') {
+        window.JSON.parse = (function() {
+            var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u2029\u2060-\u206f\ufeff\ufff0-\uffff]/g;
+            var escapable = /[\\"\x00-\x1f\x7f-\x9f]/g;
+            var meta = {'\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r', '"': '\\"', '\\': '\\\\'};
+            function quote(string) {
+                escapable.lastIndex = 0;
+                return escapable.test(string) ? '"' + string.replace(escapable, function(a) {
+                    return meta[a] || '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+                }) + '"' : '"' + string + '"';
+            }
+            return function(text) {
+                if (typeof text !== 'string') return text;
+                cx.lastIndex = 0;
+                if (cx.test(text)) {
+                    text = text.replace(cx, function(a) {
+                        return '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+                    });
+                }
+                if (/^[\],:{}\s]*$/.test(text.replace(/\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g, '@').replace(/"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g, ']').replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
+                    return eval('(' + text + ')');
+                }
+                throw new SyntaxError('JSON.parse');
+            };
+        }());
+    }
     
     var ws = null;
     var currentContact = null;
     var contacts = {};
+    var suppressAutoOpenChats = false;
     var conversations = {};
     var conversationStates = {};
     var queuedMessages = {};
     var typingTimers = {};
+    var conversationUnreadCounts = {};
+    var contactActivityState = {};
     var ownProfile = {
         email: '',
         displayName: '',
@@ -23,8 +158,12 @@
     var websocketAttemptIndex = 0;
     var websocketOpened = false;
     var websocketRetryTimer = null;
+    var pollingActive = false;
+    var pollingCursor = 0;
+    var pollingTimer = null;
     var forceHttpEnabled = false;
     var userAgent = window.navigator && window.navigator.userAgent ? window.navigator.userAgent : '';
+    var loginRedirectOverride = null;
 
     var configuredServices = {
         crosstalk: {
@@ -47,16 +186,51 @@
         }
     };
 
-    function isUnsupportedIOSDevice() {
-        return /(iPhone|iPad|iPod)/.test(userAgent) && /OS [1-5]_/.test(userAgent) && /Safari/.test(userAgent);
+    // functions for browsers that don't support websockets, fall back to long polling
+    function supportsWebSocket() {
+        return typeof window.WebSocket !== 'undefined';
+    }
+
+    function isTransportReady() {
+        if (pollingActive) {
+            return true;
+        }
+
+        return !!(ws && supportsWebSocket() && ws.readyState === window.WebSocket.OPEN);
+    }
+
+    function stopPollingTransport() {
+        pollingActive = false;
+        if (pollingTimer) {
+            clearTimeout(pollingTimer);
+            pollingTimer = null;
+        }
+    }
+
+    function connectCurrentTransport() {
+        if (supportsWebSocket()) {
+            connectWebSocket();
+            return;
+        }
+
+        connectPollingTransport();
+        handleAuthenticated();
     }
     
-    // theres definitely a better way to do this lmao
+    // grab references to all the main dom elements we'll need later
     var loginScreen = document.getElementById('loginScreen');
     var mainScreen = document.getElementById('mainScreen');
     var chatScreen = document.getElementById('chatScreen');
     var loginForm = document.getElementById('loginForm');
-    var requiredLoginInputs = loginForm ? loginForm.querySelectorAll('input[required]') : [];
+    var requiredLoginInputs = [];
+    if (loginForm) {
+        var allInputs = loginForm.getElementsByTagName('input');
+        for (var j = 0; j < allInputs.length; j++) {
+            if (allInputs[j].getAttribute('required') !== null) {
+                requiredLoginInputs.push(allInputs[j]);
+            }
+        }
+    }
     var loginBtn = document.getElementById('loginBtn');
     var serviceSelect = document.getElementById('service');
     var forceHttpToggle = document.getElementById('forceHttp');
@@ -78,8 +252,12 @@
     var currentPersonalMessage = document.getElementById('currentPersonalMessage');
     var personalMessageInput = document.getElementById('personalMessageInput');
     var setPsmBtn = document.getElementById('setPsmBtn');
+    var openAddContactBtn = document.getElementById('openAddContactBtn');
+    var addContactModal = document.getElementById('addContactModal');
     var addContactInput = document.getElementById('addContactInput');
     var addContactBtn = document.getElementById('addContactBtn');
+    var closeAddContactBtn = document.getElementById('closeAddContactBtn');
+    var submitAddContactBtn = document.getElementById('submitAddContactBtn');
     var contactList = document.getElementById('contactList');
     var chatTitle = document.getElementById('chatTitle');
     var nudgeBtn = document.getElementById('nudgeBtn');
@@ -87,18 +265,26 @@
     var messageContainer = document.getElementById('messageContainer');
     var messageInput = document.getElementById('messageInput');
     var emoticonPackSelect = document.getElementById('emoticonPackSelect');
-    var customServiceRows = loginForm ? loginForm.querySelectorAll('.custom-service-row') : [];
+    var customServiceRows = [];
+    if (loginForm) {
+        var allDivs = loginForm.getElementsByTagName('div');
+        for (var k = 0; k < allDivs.length; k++) {
+            if (allDivs[k].className && allDivs[k].className.indexOf('custom-service-row') !== -1) {
+                customServiceRows.push(allDivs[k]);
+            }
+        }
+    }
 
-    // Emoticon data store
+    // emoticon storage and metadata
     var emoticonData = null;
-    var emoticonCodes = []; // sorted by length, longest first
+    var emoticonCodes = []; // sorted by length (longest first) to prevent partial code matches
     var emoticonBaseUrl = 'emoticons/default/';
     var activeEmoticonPack = 'default';
-    var availableEmoticonPacks = []; // list of available pack metadata
+    var availableEmoticonPacks = []; // array of emoticon pack info from packs.json
 
     function loadEmoticons(packName) {
         var selectedPack = packName || activeEmoticonPack;
-        var jsonPath = 'emoticons/' + selectedPack + '/' + selectedPack + '.json';
+        var jsonPath = '/emoticons/' + selectedPack + '/' + selectedPack + '.json';
         var xhr = new XMLHttpRequest();
         xhr.open('GET', jsonPath, true);
         xhr.onload = function() {
@@ -108,11 +294,16 @@
                     if (!emoticonData || !emoticonData.emoticons) {
                         emoticonData = { emoticons: {} };
                     }
-                    // Extract and sort codes by length (longest first) to avoid partial matches
-                    emoticonCodes = Object.keys(emoticonData.emoticons || {})
-                        .sort(function(a, b) { return b.length - a.length; });
+                    // pull out all emoticon codes and sort by length so we match longer codes first
+                    emoticonCodes = [];
+                    for (var code in (emoticonData.emoticons || {})) {
+                        if ((emoticonData.emoticons || {}).hasOwnProperty(code)) {
+                            emoticonCodes.push(code);
+                        }
+                    }
+                    emoticonCodes.sort(function(a, b) { return b.length - a.length; });
                     activeEmoticonPack = selectedPack;
-                    emoticonBaseUrl = 'emoticons/' + activeEmoticonPack + '/';
+                    emoticonBaseUrl = '/emoticons/' + activeEmoticonPack + '/';
                     if (emoticonPackSelect) {
                         emoticonPackSelect.value = activeEmoticonPack;
                     }
@@ -138,39 +329,37 @@
 
     function handleEmoticonPackChange() {
         if (!emoticonPackSelect) return;
-        var selectedPack = (emoticonPackSelect.value || '').trim();
+        var selectedPack = trim((emoticonPackSelect.value || ''));
         if (!selectedPack) return;
         loadEmoticons(selectedPack);
     }
 
     function loadAvailableEmoticonPacks() {
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', 'emoticons/packs.json', true);
+        xhr.open('GET', '/emoticons/packs.json', true);
         xhr.onload = function() {
             if (xhr.status === 200) {
                 try {
                     availableEmoticonPacks = JSON.parse(xhr.responseText);
-                    if (!Array.isArray(availableEmoticonPacks)) {
+                    if (!isArray(availableEmoticonPacks)) {
                         availableEmoticonPacks = [];
                     }
                     populateEmoticonPackDropdown();
-                    // After populating, load the default pack
+                    // now that the dropdown is ready, load up the default emoticon pack
                     loadEmoticons('default');
                     console.log('Available emoticon packs:', availableEmoticonPacks.length);
                 } catch (e) {
                     console.error('Failed to parse packs.json:', e);
-                    // Fallback: load default without dropdown
+                    // fallbacks: just load default emoticons even if we couldn't list them
                     loadEmoticons('default');
                 }
             } else {
                 console.error('Failed to load packs.json:', xhr.status);
-                // Fallback: load default without dropdown
                 loadEmoticons('default');
             }
         };
         xhr.onerror = function() {
             console.error('Error loading packs.json');
-            // Fallback: load default without dropdown
             loadEmoticons('default');
         };
         xhr.send();
@@ -178,14 +367,14 @@
 
     function populateEmoticonPackDropdown() {
         if (!emoticonPackSelect) return;
-        // Clear existing options except the loading one
+        // clear out any old options from the dropdown
         while (emoticonPackSelect.options.length > 1) {
             emoticonPackSelect.remove(1);
         }
-        // Remove the loading option
+        // remove the initial placeholder option
         emoticonPackSelect.remove(0);
         
-        // Add options for each available pack
+        // build the dropdown with all available emoticon packs
         for (var i = 0; i < availableEmoticonPacks.length; i++) {
             var pack = availableEmoticonPacks[i];
             var option = document.createElement('option');
@@ -204,7 +393,7 @@
 
     function parseEmoticons(text) {
         if (!emoticonData || !emoticonCodes || emoticonCodes.length === 0) {
-            return text; // Return plain text if emoticons not loaded
+            return text; // emoticons aren't ready yet, just return the text as-is
         }
 
         var container = document.createElement('span');
@@ -213,13 +402,13 @@
         while (remaining.length > 0) {
             var matched = false;
             
-            // Try to find a matching emoticon code at the start of remaining text
+            // scan through all emoticon codes to see if any match the beginning of what's left
             for (var i = 0; i < emoticonCodes.length; i++) {
                 var code = emoticonCodes[i];
                 if (remaining.indexOf(code) === 0) {
                     var filename = emoticonData.emoticons[code];
                     
-                    // Add emoticon image
+                    // found a match, so create an image element for this emoticon
                     var img = document.createElement('img');
                     img.src = emoticonBaseUrl + filename;
                     img.alt = code;
@@ -237,7 +426,7 @@
             }
             
             if (!matched) {
-                // No emoticon found, add first character as text
+                // no emoticon matched, so just add this character as regular text
                 var char = remaining.charAt(0);
                 var textNode = document.createTextNode(char);
                 container.appendChild(textNode);
@@ -249,7 +438,7 @@
     }
 
     function normalizeHostInput(rawValue) {
-        var value = (rawValue || '').trim();
+        var value = trim((rawValue || ''));
         if (!value) return '';
 
         value = value.replace(/^https?:\/\//i, '');
@@ -285,30 +474,54 @@
             if (contacts[currentContact] && contacts[currentContact].displayName) {
                 chatTarget = cleanDisplayName(contacts[currentContact].displayName, 32);
             }
-            document.title = 'Chatting with ' + chatTarget + ' - iMSNP';
+            document.title = 'Chatting with ' + chatTarget + ' - PolyMSNP';
             return;
         }
 
         if (mainScreen && mainScreen.style.display !== 'none') {
-            document.title = 'Signed in as ' + getOwnDisplayNameForTitle() + ' - iMSNP';
+            document.title = 'Signed in as ' + getOwnDisplayNameForTitle() + ' - PolyMSNP';
             return;
         }
 
-        document.title = 'iMSNP';
+        document.title = 'PolyMSNP';
+    }
+
+    function getChatLayoutMode() {
+        if (!document.body) {
+            return 'stacked';
+        }
+
+        return document.body.getAttribute('data-chat-layout') || 'stacked';
+    }
+
+    function setChatSlideOpen(open) {
+        if (!document.body) {
+            return;
+        }
+
+        if (open) {
+            addClass(document.body, 'chat-open');
+        } else {
+            removeClass(document.body, 'chat-open');
+        }
     }
 
     function updateEditControls() {
+        // make sure both buttons exist before we try to update them
         if (!editContactsBtn || !removeContactsBtn) return;
 
         if (!contactEditMode) {
+            // not in edit mode, show "Edit" button and hide "Remove" button
             editContactsBtn.textContent = 'Edit';
             removeContactsBtn.style.display = 'none';
             return;
         }
 
+        // in edit mode now - show "Done" button and "Remove" button
         editContactsBtn.textContent = 'Done';
         removeContactsBtn.style.display = 'inline-block';
 
+        // count how many contacts are selected for removal
         var selectedCount = 0;
         for (var email in selectedContactsForRemoval) {
             if (selectedContactsForRemoval.hasOwnProperty(email) && selectedContactsForRemoval[email]) {
@@ -316,7 +529,44 @@
             }
         }
 
+        // update the remove button text to show count
         removeContactsBtn.textContent = selectedCount > 0 ? ('Remove (' + selectedCount + ')') : 'Remove';
+    }
+
+    function getContactActivityState(email) {
+        if (!contactActivityState[email]) {
+            contactActivityState[email] = {
+                type: '',
+                count: 0
+            };
+        }
+
+        return contactActivityState[email];
+    }
+
+    function clearContactActivityState(email) {
+        if (contactActivityState[email]) {
+            delete contactActivityState[email];
+        }
+
+        if (conversationUnreadCounts[email]) {
+            delete conversationUnreadCounts[email];
+        }
+    }
+
+    function markUnreadMessage(email) {
+        var state = getContactActivityState(email);
+        state.type = 'unread';
+        state.count = (conversationUnreadCounts[email] || 0) + 1;
+        conversationUnreadCounts[email] = state.count;
+        updateContactList();
+    }
+
+    function markTypingActivity(email) {
+        var state = getContactActivityState(email);
+        state.type = 'typing';
+        state.count = 0;
+        updateContactList();
     }
 
     function setContactEditMode(enabled) {
@@ -344,6 +594,7 @@
     }
 
     function removeSelectedContacts() {
+        // collect all contacts that are marked for removal
         var toRemove = [];
         var email;
 
@@ -358,6 +609,7 @@
             return;
         }
 
+        // ask for confirmation before deleting
         var confirmed = true;
         if (window && typeof window.confirm === 'function') {
             confirmed = window.confirm('Remove ' + toRemove.length + ' contact' + (toRemove.length === 1 ? '' : 's') + ' from your list?');
@@ -367,6 +619,7 @@
             return;
         }
 
+        // send remove message for each contact and clean up local data
         for (var i = 0; i < toRemove.length; i++) {
             email = toRemove[i];
 
@@ -375,6 +628,7 @@
                 email: email
             });
 
+            // delete all locally stored data about this contact
             delete contacts[email];
             delete conversations[email];
             delete conversationStates[email];
@@ -382,6 +636,7 @@
             delete typingTimers[email];
         }
 
+        // exit edit mode and refresh the list
         setContactEditMode(false);
         updateContactList();
         queueContactListRefresh();
@@ -411,10 +666,10 @@
         }
 
         return {
-            server: serverInput ? serverInput.value.trim() : '',
+            server: serverInput ? trim(serverInput.value) : '',
             port: portInput ? parseInt(portInput.value, 10) : NaN,
-            nexus: nexusInput ? nexusInput.value.trim() : '',
-            config: configInput ? configInput.value.trim() : '',
+            nexus: nexusInput ? trim(nexusInput.value) : '',
+            config: configInput ? trim(configInput.value) : '',
             useCustom: true
         };
     }
@@ -430,7 +685,7 @@
         updateLoginButtonState();
     }
     
-    // Strip Messenger Plus! format tags from usernames
+    // remove messenger plus formatting tags and truncate if needed
     function cleanDisplayName(name, maxLength) {
         var cleaned = name.replace(/\[.*?\]/g, '');
         if (maxLength && cleaned.length > maxLength) {
@@ -439,10 +694,9 @@
         return cleaned;
     }
     
-    // websocket init
+    // establish websocket connection
     function connectWebSocket() {
-        if (isUnsupportedIOSDevice()) {
-            showError('Unsupported device');
+        if (!supportsWebSocket()) {
             return;
         }
 
@@ -472,6 +726,8 @@
         }
         
         console.log('[CLIENT_WS] Connecting to WebSocket:', wsUrl);
+        // suppress automatic opening of chats while we attach and replay history
+        suppressAutoOpenChats = true;
         ws = new WebSocket(wsUrl);
         
         ws.onopen = function() {
@@ -521,13 +777,96 @@
             }
         };
     }
+
+    function connectPollingTransport() {
+        var pollUrl;
+
+        if (pollingActive) {
+            return;
+        }
+
+        pollingActive = true;
+        pollingCursor = 0;
+        pollUrl = '/api/poll';
+
+        function pollOnce() {
+            if (!pollingActive) {
+                return;
+            }
+
+            sendGetRequest(pollUrl + '?cursor=' + encodeURIComponent(String(pollingCursor)), function(status, responseText) {
+                var response;
+                var i;
+
+                if (!pollingActive) {
+                    return;
+                }
+
+                if (status < 200 || status >= 300) {
+                    pollingTimer = setTimeout(pollOnce, 1000);
+                    return;
+                }
+
+                try {
+                    response = JSON.parse(responseText);
+                } catch (parseError) {
+                    pollingTimer = setTimeout(pollOnce, 1000);
+                    return;
+                }
+
+                if (response.type === 'events' && response.messages) {
+                    if (response.cursor && response.cursor > pollingCursor) {
+                        pollingCursor = response.cursor;
+                    }
+
+                    for (i = 0; i < response.messages.length; i++) {
+                        handleServerMessage(response.messages[i]);
+                    }
+                } else if (response.type === 'disconnected') {
+                    handleServerMessage(response);
+                    stopPollingTransport();
+                    return;
+                }
+
+                pollingTimer = setTimeout(pollOnce, 1000);
+            });
+        }
+
+        pollOnce();
+    }
     
     function sendMessage(message) {
         console.log('[CLIENT_SEND] Attempting to send message, type:', message.type);
         if (message.type === 'login') {
             console.log('[CLIENT_SEND] Login message details - Email:', message.email);
         }
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (pollingActive) {
+            sendJsonRequest('/api/command', message, function(status, responseText) {
+                var response;
+
+                if (status < 200 || status >= 300) {
+                    showError('Not connected to server');
+                    return;
+                }
+
+                if (!responseText) {
+                    return;
+                }
+
+                try {
+                    response = JSON.parse(responseText);
+                } catch (parseError) {
+                    return;
+                }
+
+                if (response && response.type && response.type !== 'ok') {
+                    handleServerMessage(response);
+                }
+            });
+            return;
+        }
+
+        if (ws && supportsWebSocket() && ws.readyState === window.WebSocket.OPEN) {
             var jsonStr = JSON.stringify(message);
             console.log('[CLIENT_SEND] WebSocket ready, sending JSON (length:', jsonStr.length, ')');
             ws.send(jsonStr);
@@ -536,6 +875,69 @@
             console.error('[CLIENT_SEND] WebSocket not ready, readyState:', ws ? ws.readyState : 'null');
             showError('Not connected to server');
         }
+    }
+
+    function sendJsonRequest(url, payload, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) {
+                return;
+            }
+            callback(xhr.status, xhr.responseText);
+        };
+        xhr.send(JSON.stringify(payload));
+    }
+
+    function sendGetRequest(url, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) {
+                return;
+            }
+            callback(xhr.status, xhr.responseText);
+        };
+        xhr.send(null);
+    }
+
+    function checkExistingSession() {
+        sendGetRequest('/api/session', function(status, responseText) {
+            var response;
+
+            if (status < 200 || status >= 300) {
+                return;
+            }
+
+            try {
+                response = JSON.parse(responseText);
+            } catch (parseError) {
+                return;
+            }
+
+            if (response.type === 'authenticated') {
+                // Prefill profile fields from session response so the UI isn't empty
+                if (response.email) {
+                    ownProfile.email = response.email;
+                    // also populate the login email input so `getUserEmail()` and other
+                    // code that reads the login box remain consistent after auto-login
+                    var emailEl = document.getElementById('email');
+                    if (emailEl) {
+                        try { emailEl.value = response.email; } catch (e) {}
+                    }
+                }
+                if (response.display_name) {
+                    ownProfile.displayName = response.display_name;
+                }
+                if (response.personal_message) {
+                    ownProfile.personalMessage = response.personal_message;
+                }
+                renderOwnProfile();
+                // now attach the active transport to receive live updates
+                connectCurrentTransport();
+            }
+        });
     }
     
     function handleServerMessage(message) {
@@ -614,7 +1016,7 @@
     function handleLogin(e) {
         if (e) e.preventDefault();
 
-        var email = document.getElementById('email').value.trim();
+        var email = trim(document.getElementById('email').value);
         var password = document.getElementById('password').value;
         var serviceConfig = getSelectedServiceConfig();
         var server = serviceConfig.server;
@@ -638,6 +1040,16 @@
         console.log('[CLIENT_LOGIN] Config Server:', configServer || '(none)');
         console.log('[CLIENT_LOGIN] Force HTTP:', forceHttp);
 
+        if (loginRedirectOverride) {
+            if (loginRedirectOverride.server) {
+                server = loginRedirectOverride.server;
+            }
+            if (loginRedirectOverride.port) {
+                port = loginRedirectOverride.port;
+            }
+            loginRedirectOverride = null;
+        }
+
         ownProfile.email = email;
         ownProfile.displayName = '';
         ownProfile.personalMessage = '';
@@ -653,14 +1065,12 @@
         console.log('[CLIENT_LOGIN] Validation passed, preparing login message');
         forceHttpEnabled = forceHttp;
         loginAttemptActive = true;
-        websocketAttemptIndex = 0;
-        websocketOpened = false;
         loginBtn.disabled = true;
         loginBtn.innerHTML = 'Signing in...';
         hideError();
         hideStatus();
 
-        pendingLoginMessage = {
+        sendJsonRequest('/api/login', {
             type: 'login',
             email: email,
             password: password,
@@ -668,71 +1078,75 @@
             port: port,
             nexus_url: nexusUrl,
             config_server: configServer || null
+        }, function(status, responseText) {
+            var response;
 
-        };
+            if (status < 200 || status >= 300) {
+                loginAttemptActive = false;
+                showError('Login failed');
+                return;
+            }
 
-        if (!ws || ws.readyState === WebSocket.CLOSED) {
-            connectWebSocket();
-        }
+            try {
+                response = JSON.parse(responseText);
+            } catch (parseError) {
+                loginAttemptActive = false;
+                showError('Login failed');
+                return;
+            }
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(pendingLoginMessage));
-            pendingLoginMessage = null;
-            console.log('[CLIENT_LOGIN] Login message sent to server');
-        } else {
-            showStatus('Connecting to server...');
-            console.log('[CLIENT_LOGIN] Login queued until WebSocket opens');
-        }
-    }
-    
-    function handleRedirect(server, port) {
-        showStatus('Redirecting to ' + server + ':' + port + '...');
-        isRedirecting = true;
-        if (ws) {
-            ws.close();
-        }
-        
-        // patience is a virtue
-        setTimeout(function() {
-            console.log('[CLIENT_REDIRECT] Reconnecting WebSocket...');
-            connectWebSocket();
-            
-            // patience is a virtue 2
-            setTimeout(function() {
-                isRedirecting = false;
-                var email = document.getElementById('email').value.trim();
-                var password = document.getElementById('password').value;
-                var serviceConfig = getSelectedServiceConfig();
-                var nexusUrl = buildServiceUrl(serviceConfig.nexus, '/rdr/pprdr.asp', forceHttpEnabled);
-                var configServer = buildServiceUrl(serviceConfig.config, '/Config/MsgrConfig.asmx', forceHttpEnabled);
-                
-                console.log('[CLIENT_REDIRECT] Re-attempting login after redirect with email:', email);
-                websocketAttemptIndex = 0;
-                websocketOpened = false;
-                pendingLoginMessage = {
-                    type: 'login',
-                    email: email,
-                    password: password,
-                    server: server,
-                    port: port,
-                    nexus_url: nexusUrl,
-                    config_server: configServer || null
+            if (response.type === 'redirected') {
+                loginAttemptActive = true;
+                showStatus('Redirecting to ' + response.server + ':' + response.port + '...');
+                serverInput.value = response.server;
+                portInput.value = String(response.port);
+                loginRedirectOverride = {
+                    server: response.server,
+                    port: response.port
                 };
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify(pendingLoginMessage));
-                    pendingLoginMessage = null;
-                    console.log('[CLIENT_REDIRECT] Redirect login message sent');
-                } else {
-                    console.log('[CLIENT_REDIRECT] Redirect login queued until WebSocket opens');
+                setTimeout(function() {
+                    handleLogin();
+                }, 1000);
+                return;
+            }
+
+            if (response.type === 'authenticated') {
+                loginAttemptActive = false;
+                if (response.email) {
+                    ownProfile.email = response.email;
+                    var loginEmailEl = document.getElementById('email');
+                    if (loginEmailEl) {
+                        try { loginEmailEl.value = response.email; } catch (e) {}
+                    }
                 }
-            }, 2000);
-        }, 2000);
+                if (response.display_name) {
+                    ownProfile.displayName = response.display_name;
+                }
+                if (response.personal_message) {
+                    ownProfile.personalMessage = response.personal_message;
+                }
+                renderOwnProfile();
+                if (ws) {
+                    try {
+                        ws.close();
+                    } catch (closeError) {
+                    }
+                }
+                showStatus('Signed in successfully!');
+                connectCurrentTransport();
+                return;
+            }
+
+            loginAttemptActive = false;
+            showError(response.message || 'Login failed');
+        });
     }
     
     function handleAuthenticated() {
         loginAttemptActive = false;
         loginBtn.disabled = false;
         loginBtn.innerHTML = 'Signed in!';
+        setChatSlideOpen(false);
         hideError();
         showStatus('Signed in successfully!');
         renderOwnProfile();
@@ -741,8 +1155,10 @@
             loginScreen.style.display = 'none';
             mainScreen.style.display = 'block';
             updateWindowTitle();
-            // Adjust contact list height after screen is shown
+            // resize the contact list now that the main screen is visible
             setTimeout(adjustContactListHeight, 50);
+            // allow some time for server history replay before enabling auto-open
+            setTimeout(function() { suppressAutoOpenChats = false; }, 500);
         }, 500);
     }
     
@@ -771,7 +1187,8 @@
     }
     
     function handlePersonalMessageUpdate(update) {
-        if (update.email === getUserEmail()) {
+        // compare against the authoritative profile email populated from the server
+        if (ownProfile && ownProfile.email && update.email === ownProfile.email) {
             ownProfile.personalMessage = update.message || '';
             renderOwnProfile();
         }
@@ -849,8 +1266,19 @@
         }
         conversationStates[email] = 'ready';
         flushQueuedMessages(email);
-        openChat(email);
-        console.log('[CLIENT] handleConversationReady - chat opened for', email);
+
+        if (!currentContact || currentContact === email) {
+            if (!suppressAutoOpenChats) {
+                openChat(email);
+                console.log('[CLIENT] handleConversationReady - chat opened for', email);
+            } else {
+                console.log('[CLIENT] handleConversationReady - suppressed auto-open for', email);
+                updateContactList();
+            }
+        } else {
+            console.log('[CLIENT] handleConversationReady - chat kept in background for', email);
+            updateContactList();
+        }
     }
     
     function handleTextMessage(msg) {
@@ -875,36 +1303,48 @@
             console.log('Displaying message in UI');
             displayMessage(message, false);
             scrollToBottom();
+            clearContactActivityState(msg.email);
+            updateContactList();
+        } else {
+            markUnreadMessage(msg.email);
         }
     }
     
-    function handleNudge(email) {
-        if (currentContact === email) {
-            // Visual feedback
-            addSystemMessage('💥 ' + (contacts[email] ? contacts[email].displayName : email) + ' sent you a nudge!');
-            
-            // Shake animation (with webkit prefix for iOS 6)
-            var chatScreen = document.getElementById('chatScreen');
-            chatScreen.style.webkitAnimation = 'shake 0.5s';
-            chatScreen.style.animation = 'shake 0.5s';
-            setTimeout(function() {
-                chatScreen.style.webkitAnimation = '';
-                chatScreen.style.animation = '';
-            }, 500);
-            
-            // Vibration for mobile
-            if (window.navigator && window.navigator.vibrate) {
-                window.navigator.vibrate([100, 50, 100, 50, 100]);
+    function handleNudge(email) { 
+        // Always show a visible shake so the user notices the nudge
+        try {
+            var target = document.getElementById('chatScreen') || document.body || document.documentElement;
+            if (target) {
+                target.style.webkitAnimation = 'shake 1s';
+                target.style.animation = 'shake 1s';
+                setTimeout(function() {
+                    try { target.style.webkitAnimation = ''; target.style.animation = ''; } catch (e) {}
+                }, 1000);
             }
+        } catch (e) {}
+
+        // If the nudge is for the active chat, add an inline system message to the conversation
+        if (currentContact === email) {
+            addSystemMessage((contacts[email] ? cleanDisplayName(contacts[email].displayName, 28) : email) + ' sent you a nudge!');
+        } else {
+            // for background chats, mark activity so the contact list shows attention
+            markUnreadMessage(email);
+        }
+
+        // vibrate if available
+        if (window.navigator && window.navigator.vibrate) {
+            try { window.navigator.vibrate(1000); } catch (e) {}
         }
     }
     
-    // Handle typing notification
-    // showTypingIndicator is broken atm, fix later
+    // display when someone is typing (note: not fully working yet)
     function handleTypingNotification(email) {
         if (currentContact === email) {
             showTypingIndicator(email);
+            return;
         }
+
+        markTypingActivity(email);
     }
     
     function handleParticipantJoined(email) {
@@ -912,19 +1352,24 @@
         conversationStates[email] = 'ready';
         flushQueuedMessages(email);
         
-        // Initialize conversation if it doesn't exist
+        // set up the conversation array if this is the first message
         if (!conversations[email]) {
             conversations[email] = [];
             console.log('[CLIENT] handleParticipantJoined - initialized conversations array for', email);
         }
         
-        // If this contact isn't currently open in chat, open it
-        // (This handles cases where the contact initiated the switchboard)
-        if (currentContact !== email) {
-            console.log('[CLIENT] handleParticipantJoined - opening chat for', email);
-            openChat(email);
+        // if nothing is open yet, show the new chat. otherwise keep it in the background.
+        if (!currentContact) {
+            if (!suppressAutoOpenChats) {
+                console.log('[CLIENT] handleParticipantJoined - opening chat for', email);
+                openChat(email);
+            } else {
+                console.log('[CLIENT] handleParticipantJoined - suppressed auto-open for', email);
+                // still show a system notice in background so UI indicates activity
+                addSystemMessage(email + ' joined the conversation');
+            }
         } else {
-            // Already in chat with this contact, just add system message
+            // already chatting with them, just notify the user they joined
             console.log('[CLIENT] handleParticipantJoined - already in chat with', email, '- adding system message');
             addSystemMessage(email + ' joined the conversation');
         }
@@ -938,15 +1383,22 @@
     
     function handleDisconnected(message) {
         var reason = (message && message.message) ? message.message : 'Conversation disconnected';
+        var chatLayoutMode = getChatLayoutMode();
         console.warn('[CLIENT] Disconnected event received:', message);
 
-        // Treat this as a non-fatal runtime event to avoid forced logout/reload loops.
+        // handle disconnection gracefully without forcing a full logout
         if (chatScreen.style.display !== 'none' && currentContact) {
             delete conversationStates[currentContact];
             delete queuedMessages[currentContact];
             addSystemMessage(reason);
-            chatScreen.style.display = 'none';
-            mainScreen.style.display = 'block';
+            if (chatLayoutMode === 'embedded' || chatLayoutMode === 'slide') {
+                chatScreen.style.display = 'none';
+                mainScreen.style.display = 'block';
+                setChatSlideOpen(false);
+            } else {
+                chatScreen.style.display = 'none';
+                mainScreen.style.display = 'block';
+            }
             adjustContactListHeight();
             currentContact = null;
             updateWindowTitle();
@@ -968,12 +1420,12 @@
         }
         
         sortedContacts.sort(function(a, b) {
-            // Online contacts first
+            // show online people first
             var aOnline = a.status !== 'Offline';
             var bOnline = b.status !== 'Offline';
             if (aOnline !== bOnline) return bOnline - aOnline;
             
-            // Then by display name
+            // then sort by their display name
             return a.displayName.localeCompare(b.displayName);
         });
         
@@ -989,6 +1441,10 @@
         item.className = 'contact-item';
         if (contactEditMode) {
             item.className += ' edit-mode';
+        }
+
+        if (currentContact === contact.email) {
+            item.className += ' active-chat';
         }
         
         var statusIndicator = document.createElement('div');
@@ -1016,8 +1472,11 @@
         }
         
         if (contactEditMode) {
-            var selectIndicator = document.createElement('div');
+            var selectIndicator = document.createElement('input');
+            selectIndicator.type = 'checkbox';
+            selectIndicator.disabled = true;
             selectIndicator.className = 'contact-select-indicator';
+            selectIndicator.checked = !!selectedContactsForRemoval[contact.email];
             item.appendChild(selectIndicator);
 
             if (selectedContactsForRemoval[contact.email]) {
@@ -1025,8 +1484,24 @@
             }
         }
 
+        var activityIndicator = document.createElement('div');
+        activityIndicator.className = 'contact-activity-indicator';
+        if (contactEditMode) {
+            activityIndicator.className += ' edit-indicator';
+            activityIndicator.textContent = selectedContactsForRemoval[contact.email] ? '✓' : '';
+        } else if (contactActivityState[contact.email]) {
+            if (contactActivityState[contact.email].type === 'typing') {
+                activityIndicator.className += ' typing-indicator-slot';
+                activityIndicator.textContent = 'typing';
+            } else if (contactActivityState[contact.email].type === 'unread') {
+                activityIndicator.className += ' unread-indicator-slot';
+                activityIndicator.textContent = contactActivityState[contact.email].count > 1 ? String(contactActivityState[contact.email].count) : '•';
+            }
+        }
+
         item.appendChild(statusIndicator);
         item.appendChild(info);
+        item.appendChild(activityIndicator);
         
         item.onclick = function() {
             if (contactEditMode) {
@@ -1064,14 +1539,14 @@
         }
 
         conversationStates[email] = 'starting';
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (isTransportReady()) {
             console.log('Sending startConversation request for:', email);
             sendMessage({
                 type: 'startConversation',
                 email: email
             });
         } else {
-            console.warn('WebSocket not ready, cannot start conversation yet for:', email);
+            console.warn('Transport not ready, cannot start conversation yet for:', email);
             showStatus('Connecting... please try again.');
         }
     }
@@ -1122,8 +1597,12 @@
     }
     
     function openChat(email) {
+        var chatLayoutMode = getChatLayoutMode();
         currentContact = email;
         var contact = contacts[email];
+
+        clearContactActivityState(email);
+        updateContactList();
         
         if (contact) {
             chatTitle.textContent = cleanDisplayName(contact.displayName, 28);
@@ -1133,7 +1612,7 @@
         }
         
         messageContainer.innerHTML = '';
-        messageInput.value = ''; // Clear input when switching contacts
+        messageInput.value = ''; // reset the message input when switching to a new contact
         
         if (conversations[email] && conversations[email].length) {
             for (var i = 0; i < conversations[email].length; i++) {
@@ -1142,15 +1621,30 @@
             }
         }
         
-        mainScreen.style.display = 'none';
-        chatScreen.style.display = 'block';
+        if (chatLayoutMode === 'embedded') {
+            mainScreen.style.display = 'block';
+            chatScreen.style.display = 'flex';
+        } else if (chatLayoutMode === 'slide') {
+            mainScreen.style.display = 'block';
+            chatScreen.style.display = 'flex';
+            setChatSlideOpen(true);
+        } else {
+            mainScreen.style.display = 'none';
+            chatScreen.style.display = 'flex';
+        }
         updateWindowTitle();
         messageInput.focus();
         scrollToBottom();
     }
     
     function getUserEmail() {
-        return document.getElementById('email').value.trim();
+        // Prefer the server-provided profile email (populated on session restore)
+        if (ownProfile && ownProfile.email && ownProfile.email.length) {
+            return ownProfile.email;
+        }
+
+        var emailEl = document.getElementById('email');
+        return emailEl ? trim(emailEl.value) : '';
     }
     
     function displayMessage(message, isSent) {
@@ -1181,7 +1675,7 @@
         if (typeof parsed === 'string') {
             text.textContent = parsed;
         } else {
-            // parsed is a container with mixed text nodes and img elements
+            // emoticon parsing returned a container element with text and images mixed in
             while (parsed.firstChild) {
                 text.appendChild(parsed.firstChild);
             }
@@ -1207,24 +1701,16 @@
         scrollToBottom();
     }
     
-    // Show typing indicator
-    // Doesn't appear in regular use, fix later
+    // display a typing indicator for a specific contact (buggy, needs fixing)
     function showTypingIndicator(email) {
-        var existingIndicator = document.getElementById('typing-' + email);
-        if (existingIndicator) {
+        markTypingActivity(email);
+
+        if (typingTimers[email]) {
             clearTimeout(typingTimers[email]);
-        } else {
-            var indicator = document.createElement('div');
-            indicator.id = 'typing-' + email;
-            indicator.className = 'typing-indicator';
-            indicator.textContent = 'typing...';
-            messageContainer.appendChild(indicator);
-            scrollToBottom();
         }
         
         typingTimers[email] = setTimeout(function() {
-            var ind = document.getElementById('typing-' + email);
-            if (ind) ind.parentNode.removeChild(ind);
+            clearTypingActivity(email);
             delete typingTimers[email];
         }, 3000);
     }
@@ -1246,7 +1732,7 @@
     }
     
     function handleSendMessage() {
-        var text = messageInput.value.trim();
+        var text = trim(messageInput.value);
         console.log('handleSendMessage called, text:', text, 'currentContact:', currentContact);
         if (!text || !currentContact) return;
 
@@ -1262,11 +1748,10 @@
         messageInput.value = '';
     }
     
-    // Send typing notification
-    // Seems to be doing some weird shit
+    // track typing notifications (disabled for now due to bugs)
     var typingTimeout = null;
     function handleTypingInput() {
-        return;
+        return; // typing notifications are currently disabled
     }
     
     function handleNudgeBtn() {
@@ -1281,19 +1766,17 @@
     }
     
     function closeChat() {
-        if (currentContact) {
-            sendMessage({
-                type: 'closeConversation',
-                email: currentContact
-            });
-            delete conversations[currentContact];
-            delete conversationStates[currentContact];
-            delete queuedMessages[currentContact];
+        var chatLayoutMode = getChatLayoutMode();
+        if (currentContact && conversationStates[currentContact]) {
+            conversationStates[currentContact] = 'ready';
         }
         
         currentContact = null;
         chatScreen.style.display = 'none';
         mainScreen.style.display = 'block';
+        if (chatLayoutMode === 'slide') {
+            setChatSlideOpen(false);
+        }
         updateWindowTitle();
         adjustContactListHeight();
     }
@@ -1308,7 +1791,7 @@
     }
     
     function handleSetPsm() {
-        var message = personalMessageInput.value.trim();
+        var message = trim(personalMessageInput.value);
         console.log('Setting personal message to:', message);
         sendMessage({
             type: 'setPersonalMessage',
@@ -1320,7 +1803,7 @@
     }
 
     function handleSetDisplayName() {
-        var displayName = displayNameInput ? displayNameInput.value.trim() : '';
+        var displayName = displayNameInput ? trim(displayNameInput.value) : '';
         if (!displayName) {
             showStatus('Username cannot be empty');
             return;
@@ -1336,9 +1819,25 @@
         displayNameInput.value = '';
         showStatus('Username updated');
     }
+
+    function showAddContactModal() {
+        if (!addContactModal) return;
+        addContactModal.style.display = addContactModal.className && addContactModal.className.indexOf('modal-overlay') !== -1 ? 'flex' : 'block';
+        if (addContactInput) {
+            addContactInput.value = '';
+        }
+        if (addContactInput && addContactInput.focus) {
+            addContactInput.focus();
+        }
+    }
+
+    function hideAddContactModal() {
+        if (!addContactModal) return;
+        addContactModal.style.display = 'none';
+    }
     
     function handleAddContact() {
-        var email = addContactInput.value.trim();
+        var email = trim(addContactInput.value);
         if (!email) return;
         
         console.log('[CLIENT] Adding contact:', email);
@@ -1347,6 +1846,7 @@
             email: email
         });
 
+        // pre-populate the contact list with this new contact
         if (!contacts[email]) {
             contacts[email] = {
                 email: email,
@@ -1361,24 +1861,38 @@
         queueContactListRefresh();
         
         addContactInput.value = '';
+        hideAddContactModal();
         showStatus('Contact request sent');
     }
     
     function handleLogout() {
-        sendMessage({
+        sendJsonRequest('/api/logout', {
             type: 'logout'
+        }, function(status) {
+            if (status < 200 || status >= 300) {
+                showError('Logout failed');
+                return;
+            }
+
+            // clear out all local data before the page comes back up signed out
+            contacts = {};
+            conversations = {};
+            currentContact = null;
+            conversationUnreadCounts = {};
+            contactActivityState = {};
+            setContactEditMode(false);
+            updateWindowTitle();
+            stopPollingTransport();
+
+            if (ws) {
+                try {
+                    ws.close();
+                } catch (closeError) {
+                }
+            }
+
+            window.location.reload();
         });
-        
-        contacts = {};
-        conversations = {};
-        currentContact = null;
-        setContactEditMode(false);
-        updateWindowTitle();
-        
-        ws.close();
-        
-        // Reload the page instead of just switching screens
-        window.location.reload();
     }
 
     function handleReload() {
@@ -1387,6 +1901,7 @@
     
     function showError(message) {
         loginError.textContent = message;
+        loginError.style.whiteSpace = 'pre-line';
         loginError.style.display = 'block';
         loginBtn.disabled = false;
         loginBtn.innerHTML = 'Sign In';
@@ -1408,11 +1923,13 @@
 
     function addClass(el, className) {
         if (!el) return;
+        // use the modern classList api if available
         if (el.classList) {
             el.classList.add(className);
             return;
         }
 
+        // fallback for older browsers: manually manipulate the class string
         if ((' ' + el.className + ' ').indexOf(' ' + className + ' ') === -1) {
             el.className = el.className ? el.className + ' ' + className : className;
         }
@@ -1420,11 +1937,13 @@
 
     function removeClass(el, className) {
         if (!el) return;
+        // use the modern classList api if available
         if (el.classList) {
             el.classList.remove(className);
             return;
         }
 
+        // fallback for older browsers: use regex to remove the class
         el.className = el.className.replace(new RegExp('(^|\\s)' + className + '(?=\\s|$)', 'g'), ' ').replace(/\s+/g, ' ').replace(/^\s|\s$/g, '');
     }
 
@@ -1434,7 +1953,7 @@
         var passwordInput = document.getElementById('password');
         var serviceConfig;
 
-        if (!emailInput.value || !emailInput.value.trim() || !passwordInput.value || !passwordInput.value.trim()) {
+        if (!emailInput.value || !trim(emailInput.value) || !passwordInput.value || !trim(passwordInput.value)) {
             allFilled = false;
         }
 
@@ -1456,60 +1975,70 @@
         }
     }
     
-    // Load available packs and default emoticons on app start
+    // load emoticon packs when the app starts
     loadAvailableEmoticonPacks();
     
-    // Event listeners
-    loginForm.addEventListener('submit', handleLogin);
-    loginBtn.addEventListener('click', handleLogin);
+    // wire up all the button clicks and form submissions
+    on(loginForm, 'submit', handleLogin);
+    on(loginBtn, 'click', handleLogin);
 
     for (var requiredIndex = 0; requiredIndex < requiredLoginInputs.length; requiredIndex++) {
-        requiredLoginInputs[requiredIndex].addEventListener('input', updateLoginButtonState);
-        requiredLoginInputs[requiredIndex].addEventListener('change', updateLoginButtonState);
-        requiredLoginInputs[requiredIndex].addEventListener('keyup', updateLoginButtonState);
+        on(requiredLoginInputs[requiredIndex], 'input', updateLoginButtonState);
+        on(requiredLoginInputs[requiredIndex], 'change', updateLoginButtonState);
+        on(requiredLoginInputs[requiredIndex], 'keyup', updateLoginButtonState);
     }
 
-    statusSelect.addEventListener('change', handleStatusChange);
+    on(statusSelect, 'change', handleStatusChange);
     if (serviceSelect) {
-        serviceSelect.addEventListener('change', updateServiceFieldsVisibility);
+        on(serviceSelect, 'change', updateServiceFieldsVisibility);
     }
     if (emoticonPackSelect) {
-        emoticonPackSelect.addEventListener('change', handleEmoticonPackChange);
+        on(emoticonPackSelect, 'change', handleEmoticonPackChange);
     }
     if (reloadBtn) {
-        reloadBtn.addEventListener('click', handleReload);
+        on(reloadBtn, 'click', handleReload);
     }
     if (editContactsBtn) {
-        editContactsBtn.addEventListener('click', function() {
+        on(editContactsBtn, 'click', function() {
             setContactEditMode(!contactEditMode);
         });
     }
     if (removeContactsBtn) {
-        removeContactsBtn.addEventListener('click', removeSelectedContacts);
+        on(removeContactsBtn, 'click', removeSelectedContacts);
     }
-    logoutBtn.addEventListener('click', handleLogout);
+    on(logoutBtn, 'click', handleLogout);
     if (setDisplayNameBtn) {
-        setDisplayNameBtn.addEventListener('click', handleSetDisplayName);
+        on(setDisplayNameBtn, 'click', handleSetDisplayName);
     }
-    setPsmBtn.addEventListener('click', handleSetPsm);
-    addContactBtn.addEventListener('click', handleAddContact);
-    nudgeBtn.addEventListener('click', handleNudgeBtn);
-    closeChatBtn.addEventListener('click', closeChat);
+    on(setPsmBtn, 'click', handleSetPsm);
+    on(openAddContactBtn, 'click', showAddContactModal);
+    on(addContactBtn, 'click', handleAddContact);
+    on(closeAddContactBtn, 'click', hideAddContactModal);
+    on(submitAddContactBtn, 'click', handleAddContact);
+    if (addContactModal) {
+        on(addContactModal, 'click', function(e) {
+            if (e.target === addContactModal) {
+                hideAddContactModal();
+            }
+        });
+    }
+    on(nudgeBtn, 'click', handleNudgeBtn);
+    on(closeChatBtn, 'click', closeChat);
     
-    // Message input - send on return
-    messageInput.addEventListener('keypress', function(e) {
+    // when user hits enter in message input, send the message
+    on(messageInput, 'keypress', function(e) {
         if (e.keyCode === 13 || e.which === 13) {
             handleSendMessage();
             e.preventDefault();
         }
     });
     
-    // Collapsible section toggles
+    // settings section can expand/collapse
     var toggleSettings = document.getElementById('toggleSettings');
     var settingsSection = document.getElementById('settingsSection');
 
     if (toggleSettings && settingsSection) {
-        toggleSettings.addEventListener('click', function() {
+        on(toggleSettings, 'click', function() {
             var section = toggleSettings.parentNode;
             if (settingsSection.style.display === 'none') {
                 settingsSection.style.display = 'block';
@@ -1524,10 +2053,10 @@
         });
     }
     
-    // Message input handlers
-    messageInput.addEventListener('keyup', handleTypingInput);
+    // handle various input field changes
+    on(messageInput, 'keyup', handleTypingInput);
     
-    personalMessageInput.addEventListener('keypress', function(e) {
+    if (personalMessageInput) on(personalMessageInput, 'keypress', function(e) {
         if (e.keyCode === 13) {
             handleSetPsm();
             e.preventDefault();
@@ -1535,7 +2064,7 @@
     });
 
     if (displayNameInput) {
-        displayNameInput.addEventListener('keypress', function(e) {
+        on(displayNameInput, 'keypress', function(e) {
             if (e.keyCode === 13) {
                 handleSetDisplayName();
                 e.preventDefault();
@@ -1543,110 +2072,123 @@
         });
     }
     
-    addContactInput.addEventListener('keypress', function(e) {
-        if (e.keyCode === 13) {
+    if (addContactInput) on(addContactInput, 'keypress', function(e) {
+        if (e.keyCode === 13 || e.which === 13) {
             handleAddContact();
             e.preventDefault();
         }
     });
 
     if (serverInput) {
-        serverInput.addEventListener('input', updateLoginButtonState);
-        serverInput.addEventListener('change', updateLoginButtonState);
-        serverInput.addEventListener('keyup', updateLoginButtonState);
+        on(serverInput, 'input', updateLoginButtonState);
+        on(serverInput, 'change', updateLoginButtonState);
+        on(serverInput, 'keyup', updateLoginButtonState);
     }
 
     if (nexusInput) {
-        nexusInput.addEventListener('input', updateLoginButtonState);
-        nexusInput.addEventListener('change', updateLoginButtonState);
-        nexusInput.addEventListener('keyup', updateLoginButtonState);
+        on(nexusInput, 'input', updateLoginButtonState);
+        on(nexusInput, 'change', updateLoginButtonState);
+        on(nexusInput, 'keyup', updateLoginButtonState);
     }
 
     if (configInput) {
-        configInput.addEventListener('input', updateLoginButtonState);
-        configInput.addEventListener('change', updateLoginButtonState);
-        configInput.addEventListener('keyup', updateLoginButtonState);
+        on(configInput, 'input', updateLoginButtonState);
+        on(configInput, 'change', updateLoginButtonState);
+        on(configInput, 'keyup', updateLoginButtonState);
     }
 
     if (forceHttpToggle) {
-        forceHttpToggle.addEventListener('change', updateLoginButtonState);
+        on(forceHttpToggle, 'change', updateLoginButtonState);
     }
 
     if (portInput) {
-        portInput.addEventListener('input', function() {
+        on(portInput, 'input', function() {
+            // strip out all non-digit characters
             var digitsOnly = this.value.replace(/[^0-9]/g, '');
             if (!digitsOnly) {
                 this.value = '';
                 return;
             }
 
+            // enforce valid port range (1-65535)
             var portNumber = parseInt(digitsOnly, 10);
             if (portNumber > 65535) portNumber = 65535;
             if (portNumber < 1) portNumber = 1;
             this.value = String(portNumber);
         });
 
-        portInput.addEventListener('keypress', function(e) {
+        on(portInput, 'keypress', function(e) {
+            // allow backspace, tab, enter, escape, delete
             var charCode = e.which || e.keyCode;
             if (charCode === 8 || charCode === 9 || charCode === 13 || charCode === 27 || charCode === 46) {
                 return;
             }
 
+            // block any non-digit character (ascii 48-57 are digits)
             if (charCode < 48 || charCode > 57) {
                 e.preventDefault();
             }
         });
 
-        portInput.addEventListener('paste', function(e) {
+        on(portInput, 'paste', function(e) {
+            // grab the pasted text from clipboard
             var clipboard = e.clipboardData || window.clipboardData;
             if (!clipboard) return;
 
             var pasted = clipboard.getData('text');
+            // if there are any non-digits, clean them out
             if (/[^0-9]/.test(pasted)) {
                 e.preventDefault();
+                // remove non-digits and limit to 5 characters
                 this.value = pasted.replace(/[^0-9]/g, '').slice(0, 5);
             }
         });
     }
     
     function adjustContactListHeight() {
-        var collapsibleSections = document.querySelector('.collapsible-sections');
-        var mainNavbar = document.querySelector('#mainScreen .navbar');
+        // calculate how much vertical space we have for the contact list
+        var mainScreenRoot = document.getElementById('mainScreen');
+        var collapsibleSections = findFirstByClass(document, 'collapsible-sections');
+        var mainNavbar = findFirstByClass(mainScreenRoot, 'navbar');
         
         if (collapsibleSections && contactList) {
             var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
             var sectionsRect = collapsibleSections.getBoundingClientRect();
             var navbarHeight = mainNavbar ? mainNavbar.offsetHeight : 44;
 
-            // Keep a small bottom gutter so the rounded container is not clipped on old WebKit.
+            // reserve a bit of space at the bottom so the rounded corners don't get cut off
             var bottomGutter = 10;
             var remainingHeight = viewportHeight - sectionsRect.bottom - bottomGutter;
 
-            // When first rendering on mobile Safari, geometry can be stale for one tick.
-            // Fallback to navbar-based estimate to avoid tiny initial list heights.
+            // on initial render, the layout might not be ready yet, so estimate instead
             if (remainingHeight < 120) {
                 remainingHeight = viewportHeight - navbarHeight - collapsibleSections.offsetHeight - 30;
             }
 
+            // enforce a minimum height so the list isn't tiny
             if (remainingHeight < 180) remainingHeight = 180;
             contactList.style.height = remainingHeight + 'px';
         }
     }
     
-    // Init
-    renderOwnProfile();
-    updateEditControls();
-    updateWindowTitle();
-    updateServiceFieldsVisibility();
-    updateLoginButtonState();
-    adjustContactListHeight();
+    // initialize the app state
+    if (renderOwnProfile) renderOwnProfile();
+    if (updateEditControls) updateEditControls();
+    if (updateWindowTitle) updateWindowTitle();
+    if (updateServiceFieldsVisibility) updateServiceFieldsVisibility();
+    if (updateLoginButtonState) updateLoginButtonState();
+    if (adjustContactListHeight) adjustContactListHeight();
+    checkExistingSession();
 
-    setTimeout(adjustContactListHeight, 50);
-    setTimeout(adjustContactListHeight, 250);
+    if (typeof setTimeout !== 'undefined') {
+        // recalculate layout after a brief delay to ensure everything is rendered
+        setTimeout(adjustContactListHeight, 50);
+        setTimeout(adjustContactListHeight, 250);
+    }
     
-    // Adjust on window resize
-    window.addEventListener('resize', adjustContactListHeight);
-    window.addEventListener('orientationchange', adjustContactListHeight);
-    window.addEventListener('load', adjustContactListHeight);
+    // recalculate layout when screen is resized or rotated
+    on(window, 'resize', adjustContactListHeight);
+    on(window, 'orientationchange', adjustContactListHeight);
+    on(window, 'load', adjustContactListHeight);
     
 })();

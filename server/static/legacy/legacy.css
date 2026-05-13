@@ -1,0 +1,226 @@
+/* PolyMSNP Legacy CSS - IE6 Compatible */
+
+body {
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    margin: 0;
+    padding: 0;
+    background: #f3f3f3;
+    color: #1e2430;
+}
+
+.bar {
+    background: #d8d8d8;
+    border-bottom: 1px solid #999;
+    padding: 6px;
+}
+
+.title {
+    font-weight: bold;
+    font-size: 18px;
+    color: #d45c32;
+}
+
+.right {
+    float: right;
+}
+
+.box {
+    border: 1px solid #999;
+    background: #fff;
+    margin: 8px;
+    padding: 8px;
+}
+
+.row {
+    margin-bottom: 6px;
+}
+
+.half {
+    float: left;
+    width: 48%;
+}
+
+.clr {
+    clear: both;
+}
+
+#contactList {
+    height: 260px;
+    overflow: auto;
+    border: 1px solid #aaa;
+    padding: 4px;
+}
+
+#messageContainer {
+    height: 220px;
+    overflow: auto;
+    border: 1px solid #aaa;
+    padding: 4px;
+}
+
+/* Align messages sent by the user to the right in legacy layout */
+.message-sent { text-align: right; }
+
+.tabs a {
+    margin-right: 8px;
+    color: #0066cc;
+    text-decoration: none;
+}
+
+.tabs a:hover {
+    text-decoration: underline;
+}
+
+button {
+    border: 1px solid #b8c2cf;
+    background: #f9fbfd;
+    color: #1d2b3f;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+button:hover {
+    background: #e8f0f8;
+}
+
+.icon-btn {
+    width: 24px;
+    padding: 0;
+    font-weight: bold;
+}
+
+.contact-item {
+    display: block;
+    border: 1px solid #d3dae3;
+    margin-bottom: 4px;
+    padding: 4px;
+    cursor: pointer;
+    background: #fff;
+}
+
+.contact-item.active-chat {
+    background: #f4f9ff;
+    border-color: #7aa6d8;
+}
+
+.contact-item.selected {
+    background: #eef6ff;
+    border-color: #8cb3e6;
+}
+
+.contact-item .contact-select-indicator {
+    display: none;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+.contact-item.edit-mode .contact-select-indicator {
+    display: inline-block;
+}
+
+.contact-activity-indicator {
+    float: right;
+    display: none;
+    min-width: 14px;
+    padding: 0 5px;
+    margin-left: 4px;
+    text-align: center;
+    background: #edf4fb;
+    color: #37536f;
+    font-size: 11px;
+    line-height: 16px;
+}
+
+.contact-item.edit-mode .contact-activity-indicator,
+.contact-activity-indicator.unread-indicator-slot,
+.contact-activity-indicator.typing-indicator-slot {
+    display: block;
+}
+
+.contact-activity-indicator.unread-indicator-slot {
+    background: #dceeff;
+    color: #184f84;
+    font-weight: bold;
+}
+
+.contact-activity-indicator.typing-indicator-slot {
+    background: #eef3f8;
+    color: #6b7788;
+    font-style: italic;
+}
+
+.contact-activity-indicator.edit-indicator {
+    background: #eef6ff;
+    color: #2b5c90;
+    font-weight: bold;
+}
+
+.contact-item.edit-mode {
+    cursor: default;
+}
+
+.legacy-modal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    filter: alpha(opacity=45);
+    z-index: 1000;
+}
+
+.legacy-modal-panel {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    width: 280px;
+    margin-left: -140px;
+    padding: 10px;
+    border: 1px solid #999;
+    background: #fff;
+}
+
+input[type="text"],
+input[type="password"] {
+    border: 1px solid #999;
+    padding: 4px;
+    font-size: 11px;
+}
+
+select {
+    border: 1px solid #999;
+    padding: 2px;
+    font-size: 11px;
+}
+
+input[type="checkbox"] {
+    margin-right: 4px;
+}
+
+h3 {
+    margin-top: 12px;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+
+h4 {
+    margin-top: 10px;
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+ul {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+
+li {
+    margin-bottom: 4px;
+}
+
+b {
+    font-weight: bold;
+}
