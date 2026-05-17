@@ -1,0 +1,43 @@
+name: Issue
+description: Submit any issue (bug report, feature request, or other)
+title: ""
+labels: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before you continue, please read the following:
+
+        You must follow the rules below when creating any issue for this project.
+
+        ### Rules
+        1. Issues must have a descriptive title (e.g. avoid titles like "it's broken" or "new feature").
+        2. Bug reports must include:
+           - A clear description of the bug  
+           - Steps to reproduce  
+           - Relevant screenshots or console output (browser console and/or server logs)
+        3. Confirm that any bug you report affects the latest version or build of the project.
+        4. Feature requests must not be listed as "wontfix" in the project README.
+        5. Do not request features introduced after MSN Messenger 7.0 (e.g. offline messaging).
+
+        Issues that do not follow these rules may be removed or deleted.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      description: You must confirm the following before submitting.
+      options:
+        - label: I have read and agree to follow all the rules listed above.
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue Description
+      description: Provide a clear and detailed description of your issue.
+      placeholder: Describe your issue here.
+    validations:
+      required: true
