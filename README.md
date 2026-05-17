@@ -65,6 +65,13 @@ Next release:
   - As a workaround you can use something like [Litterbox](https://litterbox.catbox.moe) instead.
 - Voice/video calling (No clue how to implement this and also this probably wouldn't work on mobile devices)
 
+## Contributions
+Anyone is welcome to contribute to PolyMSNP! All you need to do is:
+- Fork the repository
+- Make your changes
+- Submit a pull request
+Make sure to read [CONTRIBUTING.md](CONTRIBUTING.md) first!
+
 ## Building
 ### Prerequisites
 - The Rust programming language, downloadable from [here](https://rust-lang.org/tools/install/).
