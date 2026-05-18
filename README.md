@@ -81,8 +81,8 @@ Once installed, you can do the following:
 - Linux and macOS:
   ```
   git clone https://github.com/dskooper/PolyMSNP
-  cd polymsnp
-  ./build-release.sh
+  cd PolyMSNP
+  chmod +x build-release.sh && ./build-release.sh
   ```
 - Windows:
   1. Download the entire repository by clicking on [this link](https://github.com/dskooper/PolyMSNP/archive/refs/heads/main.zip)
