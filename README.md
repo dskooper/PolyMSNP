@@ -1,12 +1,16 @@
 > [!WARNING]
-> This project is still in active development and currently not considered stable, please take this into consideration! <br>
-> Additionally, changes are planned to be made in the next few days so keep an eye out!
+> This project is a huge work in progress, please understand there will be bugs! <br>
 
 <img width="192" alt="PolyMSNP logo" src="https://raw.githubusercontent.com/dskooper/PolyMSNP/refs/heads/main/logo.png" /> <br>
 
 PolyMSNP is a lightweight web-based client for the MSNP instant messaging protocol!
 
 This repository contains the Rust-based source code for the server.
+
+#### Hiatus, kinda?
+Before you make any assumptions, **PolyMSNP isn't being archived or cancelled!** <br>
+At the moment I am currently going through a mental slump, so I'm not really motivated to constantly work on it. <br>
+This does mean no updates for a while, but I promise that I won't abandon PolyMSNP.
 
 ## Servers
 > [!NOTE]
