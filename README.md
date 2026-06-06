@@ -7,7 +7,7 @@ PolyMSNP is a lightweight web-based client for the MSNP instant messaging protoc
 
 This repository contains the Rust-based source code for the server.
 
-#### Hiatus, kinda?
+### Hiatus, kinda?
 Before you make any assumptions, **PolyMSNP isn't being archived or cancelled!** <br>
 At the moment I am currently going through a mental slump, so I'm not really motivated to constantly work on it. <br>
 This does mean no updates for a while, but I promise that I won't abandon PolyMSNP.
