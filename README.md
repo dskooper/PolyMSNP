@@ -127,6 +127,9 @@ To create a new emoticon pack for PolyMSNP, do the following:
    }
    ```
 
+## Usage of generative AI
+Generative AI was used sparingly when working on PolyMSNP, however it was not and will never be used to make core changes to the project, **and that's a promise.**
+
 ## Credits/Thanks
 - [campos02](https://github.com/campos02) for creating the [MSNP11 SDK](https://github.com/campos02/msnp11-sdk) which this project uses
 - [CrossTalk](https://crosstalk.im) for a great MSN Messenger revival.
