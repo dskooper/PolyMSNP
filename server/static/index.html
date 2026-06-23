@@ -2,7 +2,6 @@
 <html>
     <head>
         <link id="favicon" rel="icon" type="image/png" href="/imsnp-favicon.png">
-        <script src="/favicon.js" />
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Welcome to PolyMSNP</title>
@@ -41,16 +40,17 @@
             </ul>
             <p>You can check out the <a href="https://github.com/dskooper/polymsnp">GitHub repository</a> for more information.</p>
         </div>
+        <script type="text/javascript">
+            var userAgent = window.navigator.userAgent;
+            var isOperaMini = userAgent.indexOf('Opera Mini') > -1;
+            var isLegacyMSIE = ( parseInt(userAgent.substring(userAgent.indexOf('MSIE ') + 5, userAgent.indexOf('.', userAgent.indexOf('MSIE '))), 10) <= 8 );
+            
+            if (isOperaMini) {
+                window.location.href = 'docs/unsupported_operamini.html';
+            } else if (isLegacyMSIE) {
+                window.location.href = 'docs/unsupported.html';
+            }
+        </script>
+        <script src="/favicon.js"></script>
     </body>
-    <script type="text/javascript">
-        var userAgent = window.navigator.userAgent;
-        var isOperaMini = userAgent.indexOf('Opera Mini') > -1;
-        var isLegacyMSIE = ( parseInt(userAgent.substring(userAgent.indexOf('MSIE ') + 5, userAgent.indexOf('.', userAgent.indexOf('MSIE '))), 10) <= 8 );
-        
-        if (isOperaMini) {
-            window.location.href = 'docs/unsupported_operamini.html';
-        } else if (isLegacyMSIE) {
-            window.location.href = 'docs/unsupported.html';
-        }
-    </script>
 </html>
